@@ -115,8 +115,12 @@ const PORT = parseInt(process.env.PORT || '3001', 10);
 
 async function startServer() {
   try {
-    await initPostgres();
-    logger.info('✅ PostgreSQL connected');
+    try {
+      await initPostgres();
+      logger.info('✅ PostgreSQL connected');
+    } catch (pgErr) {
+      logger.warn('⚠️ Default PostgreSQL connection failed/skipped: ' + (pgErr as Error).message);
+    }
     
     try {
       await initNeo4j();

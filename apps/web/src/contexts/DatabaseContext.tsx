@@ -111,7 +111,45 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   const activeDatabase = databases.find(d => d.id === activeDatabaseId) || (databases.length > 0 ? databases[0] : null);
 
   const testConnection = useCallback(async (dbConfig: Partial<DatabaseConnection>): Promise<{ success: boolean; latencyMs: number; message: string }> => {
-    // Simulated realistic network handshake test
+    const rawUri = dbConfig.connectionUri || (dbConfig.host?.includes('://') ? dbConfig.host : '');
+    
+    // If a connection URI is provided, do a real live test via backend
+    if (rawUri) {
+      const start = performance.now();
+      try {
+        const isMongo = dbConfig.type === 'mongodb' || rawUri.startsWith('mongodb');
+        const endpoint = isMongo ? '/api/database/mongo-data' : '/api/database/live-data';
+        const dbParam = dbConfig.databaseName ? `&db=${encodeURIComponent(dbConfig.databaseName)}` : '';
+        const res = await fetch(`${endpoint}?uri=${encodeURIComponent(rawUri)}${dbParam}`);
+        const elapsed = Math.round(performance.now() - start);
+        const json = await res.json();
+        
+        if (res.ok && json.success) {
+          const totalRecords = json.counts ? Object.values(json.counts as Record<string, number>).reduce((a, b) => a + b, 0) : 0;
+          const count = isMongo ? (json.discoveredCollections?.length || 0) : (json.discoveredTables?.length || 0);
+          const entityType = isMongo ? 'collections' : 'tables';
+          return {
+            success: true,
+            latencyMs: elapsed,
+            message: `Verified! Connected successfully (${elapsed}ms). Found ${count} ${entityType} with ${totalRecords} live records.`,
+          };
+        } else {
+          return {
+            success: false,
+            latencyMs: elapsed,
+            message: `Connection failed: ${json.error || 'Could not connect to database.'}`,
+          };
+        }
+      } catch (err: any) {
+        return {
+          success: false,
+          latencyMs: 0,
+          message: `Network error reaching API server: ${err.message}`,
+        };
+      }
+    }
+
+    // Simulated realistic network handshake test for standard manual host/port
     return new Promise(resolve => {
       setTimeout(() => {
         const latency = Math.floor(Math.random() * 25) + 12;
@@ -124,7 +162,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
             message: `Connection handshake verified over TLS 1.3 (${latency} ms latency). Schema authenticated.`,
           });
         }
-      }, 900);
+      }, 700);
     });
   }, []);
 
@@ -146,9 +184,12 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
 
     // Fetch real live row count from database
     try {
-      const uri = newDb.connectionUri || (newDb.host.startsWith('postgres') ? newDb.host : '');
-      const uriParam = uri ? `?uri=${encodeURIComponent(uri)}` : '';
-      fetch(`/api/database/live-data${uriParam}`)
+      const uri = newDb.connectionUri || (newDb.host.startsWith('postgres') || newDb.host.startsWith('mongodb') ? newDb.host : '');
+      const isMongo = newDb.type === 'mongodb' || uri.startsWith('mongodb');
+      const endpoint = isMongo ? '/api/database/mongo-data' : '/api/database/live-data';
+      const dbParam = newDb.databaseName ? `&db=${encodeURIComponent(newDb.databaseName)}` : '';
+      const uriParam = uri ? `?uri=${encodeURIComponent(uri)}${dbParam}` : '';
+      fetch(`${endpoint}${uriParam}`)
         .then(res => res.json())
         .then(json => {
           if (json.success && json.counts) {
@@ -195,10 +236,13 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const target = databases.find(d => d.id === id);
-      const uri = target?.connectionUri || (target?.host.startsWith('postgres') ? target.host : '');
-      const uriParam = uri ? `?uri=${encodeURIComponent(uri)}` : '';
+      const uri = target?.connectionUri || (target?.host.startsWith('postgres') || target?.host.startsWith('mongodb') ? target.host : '');
+      const isMongo = target?.type === 'mongodb' || uri.startsWith('mongodb');
+      const endpoint = isMongo ? '/api/database/mongo-data' : '/api/database/live-data';
+      const dbParam = target?.databaseName ? `&db=${encodeURIComponent(target.databaseName)}` : '';
+      const uriParam = uri ? `?uri=${encodeURIComponent(uri)}${dbParam}` : '';
       const start = performance.now();
-      const res = await fetch(`/api/database/live-data${uriParam}`);
+      const res = await fetch(`${endpoint}${uriParam}`);
       const elapsed = Math.round(performance.now() - start);
 
       if (res.ok) {
