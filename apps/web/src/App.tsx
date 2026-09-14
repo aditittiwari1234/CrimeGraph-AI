@@ -14,6 +14,8 @@ import TimelinePage from './pages/TimelinePage';
 import AIAssistantPage from './pages/AIAssistantPage';
 import EvidencePage from './pages/EvidencePage';
 import AuditLogsPage from './pages/AuditLogsPage';
+import DatabasePage from './pages/DatabasePage';
+import DataSourcesPage from './pages/DataSourcesPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -48,6 +50,8 @@ export default function App() {
           <Route path="ai-assistant" element={<AIAssistantPage />} />
           <Route path="evidence" element={<EvidencePage />} />
           <Route path="audit" element={<AuditLogsPage />} />
+          <Route path="database" element={<DatabasePage />} />
+          <Route path="data-sources" element={<DataSourcesPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Routes>

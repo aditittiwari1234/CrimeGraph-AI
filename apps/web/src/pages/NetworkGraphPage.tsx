@@ -6,6 +6,7 @@ import {
   Download, Info, X, ChevronRight, Loader, Network, GitBranch
 } from 'lucide-react';
 import api from '../lib/api';
+import { ALL_ENTITIES, GRAPH_EDGES } from '../data/dataset';
 
 interface GraphNode {
   id: string;
@@ -288,52 +289,23 @@ export default function NetworkGraphPage() {
   };
 
   const renderDemoGraph = (cy: Core) => {
-    const demoNodes: GraphNode[] = [
-      { id: 'P001', nodeType: 'Person', name: 'Arjun Mehta' },
-      { id: 'P002', nodeType: 'Person', name: 'Vikram Sinha' },
-      { id: 'P003', nodeType: 'Person', name: 'Ramesh Gupta' },
-      { id: 'P009', nodeType: 'Person', name: 'Ravi Kumar' },
-      { id: 'P007', nodeType: 'Person', name: 'Suresh Yadav' },
-      { id: 'P014', nodeType: 'Person', name: 'Ajay Singh' },
-      { id: 'P016', nodeType: 'Person', name: 'Alok Trivedi' },
-      { id: 'P024', nodeType: 'Person', name: 'Girish Pandey' },
-      { id: 'PH001', nodeType: 'Phone', name: '9876543210' },
-      { id: 'PH010', nodeType: 'Phone', name: '8987654321' },
-      { id: 'V001', nodeType: 'Vehicle', name: 'MH02AB1234' },
-      { id: 'O001', nodeType: 'Organization', name: 'Shree Trading Co.' },
-      { id: 'O002', nodeType: 'Organization', name: 'Apex Logistics' },
-      { id: 'ACC001', nodeType: 'Account', name: 'ACC-MH-001' },
-      { id: 'ACC011', nodeType: 'Account', name: 'ACC-SHELL-011' },
-      { id: 'L001', nodeType: 'Location', name: 'Kanpur Central' },
-      { id: 'L002', nodeType: 'Location', name: 'Lotus Hotel, Mumbai' },
-      { id: 'CASE001', nodeType: 'Case', name: 'FIR-2026-00451' },
-      { id: 'EVT001', nodeType: 'Event', name: 'Kanpur Meeting' },
-    ];
+    const demoNodes: GraphNode[] = (ALL_ENTITIES as any[]).map(e => ({
+      id: e.id,
+      nodeType: e.nodeType,
+      name: e.name || e.number || e.licensePlate || e.accountNumber || e.id,
+      ...e,
+    }));
 
-    const demoEdges = [
-      { source: 'P001', target: 'P002', type: 'ASSOCIATED_WITH', confidence: 0.89 },
-      { source: 'P001', target: 'P003', type: 'ASSOCIATED_WITH', confidence: 0.82 },
-      { source: 'P001', target: 'PH001', type: 'OWNS', confidence: 0.99 },
-      { source: 'P001', target: 'V001', type: 'OWNS', confidence: 0.99 },
-      { source: 'P001', target: 'O001', type: 'WORKS_FOR', confidence: 0.91 },
-      { source: 'P001', target: 'ACC001', type: 'OWNS', confidence: 0.99 },
-      { source: 'P001', target: 'L001', type: 'LOCATED_AT', confidence: 0.85 },
-      { source: 'P001', target: 'L002', type: 'LOCATED_AT', confidence: 0.80 },
-      { source: 'P001', target: 'CASE001', type: 'APPEARED_IN_CASE', confidence: 0.90 },
-      { source: 'P001', target: 'EVT001', type: 'ATTENDED_EVENT', confidence: 0.80 },
-      { source: 'P002', target: 'O002', type: 'WORKS_FOR', confidence: 0.85 },
-      { source: 'P003', target: 'P007', type: 'CALLS', confidence: 0.97 },
-      { source: 'P009', target: 'PH010', type: 'OWNS', confidence: 0.99 },
-      { source: 'P009', target: 'P007', type: 'CALLS', confidence: 0.96 },
-      { source: 'P009', target: 'P001', type: 'CALLS', confidence: 0.95 },
-      { source: 'P014', target: 'P001', type: 'SHARED_CONTACT', confidence: 0.60 },
-      { source: 'P014', target: 'P024', type: 'ASSOCIATED_WITH', confidence: 0.80 },
-      { source: 'P016', target: 'O001', type: 'WORKS_FOR', confidence: 0.91 },
-      { source: 'ACC001', target: 'ACC011', type: 'FINANCIAL_TRANSACTION', confidence: 0.99 },
-      { source: 'P001', target: 'P016', type: 'CALLS', confidence: 0.96 },
-    ];
+    const demoEdges = GRAPH_EDGES.map((e, i) => ({
+      id: `e-${i}`,
+      source: e.source,
+      target: e.target,
+      type: e.type,
+      confidence: e.confidence,
+      relSource: (e as any).source_ref || 'INTERPOL_NCRB_FEED',
+    }));
 
-    renderGraph(cy, demoNodes, demoEdges.map((e, i) => ({ ...e, id: `e${i}`, relSource: 'DEMO' })));
+    renderGraph(cy, demoNodes, demoEdges);
   };
 
   const handleSearch = async () => {

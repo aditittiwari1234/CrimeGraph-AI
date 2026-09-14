@@ -1,149 +1,271 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Users, ChevronRight, Filter } from 'lucide-react';
-import api from '../lib/api';
+import { Search, Filter, Users, Phone, Truck, Building2, CreditCard, MapPin, AlertTriangle, CheckCircle, Flag } from 'lucide-react';
+import {
+  PERSONS, PHONES, VEHICLES, ORGANISATIONS, ACCOUNTS, LOCATIONS,
+  ENTITY_COUNTS, type AnyEntity,
+} from '../data/dataset';
 
-const NODE_TYPES = ['Person', 'Phone', 'Vehicle', 'Organization', 'Location', 'Account', 'Case', 'Event'];
+const TYPE_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
+  Person:       { label: 'Persons',       color: '#2563eb', icon: Users },
+  Phone:        { label: 'Phones',        color: '#16a34a', icon: Phone },
+  Vehicle:      { label: 'Vehicles',      color: '#ea580c', icon: Truck },
+  Organization: { label: 'Organisations', color: '#7c3aed', icon: Building2 },
+  Account:      { label: 'Accounts',      color: '#ca8a04', icon: CreditCard },
+  Location:     { label: 'Locations',     color: '#dc2626', icon: MapPin },
+};
 
-const DEMO_ENTITIES = [
-  { id: 'P001', nodeType: 'Person', name: 'Arjun Mehta', alias: 'AJ', location: 'Mumbai', communityId: 'C1' },
-  { id: 'P002', nodeType: 'Person', name: 'Vikram Sinha', alias: 'VK', location: 'Delhi', communityId: 'C1' },
-  { id: 'P003', nodeType: 'Person', name: 'Ramesh Gupta', alias: 'Ram', location: 'Kanpur', communityId: 'C1' },
-  { id: 'P009', nodeType: 'Person', name: 'Ravi Kumar', alias: 'RK', location: 'Patna', communityId: 'C2' },
-  { id: 'P007', nodeType: 'Person', name: 'Suresh Yadav', alias: 'SY', location: 'Varanasi', communityId: 'C2' },
-  { id: 'P014', nodeType: 'Person', name: 'Ajay Singh', alias: 'AS', location: 'Chandigarh', communityId: 'C3' },
-  { id: 'PH001', nodeType: 'Phone', number: '9876543210', operator: 'Airtel', location: 'Mumbai' },
-  { id: 'V001', nodeType: 'Vehicle', licensePlate: 'MH02AB1234', make: 'Toyota', model: 'Innova', color: 'White' },
-  { id: 'O001', nodeType: 'Organization', name: 'Shree Trading Co.', type: 'Import/Export', location: 'Mumbai' },
-  { id: 'ACC001', nodeType: 'Account', accountNumber: 'ACC-MH-001-2019', bank: 'State Bank', accountType: 'Current' },
-  { id: 'ACC011', nodeType: 'Account', accountNumber: 'ACC-SHELL-011', bank: 'Unknown', accountType: 'Current' },
-  { id: 'L001', nodeType: 'Location', name: 'Kanpur Central Station', city: 'Kanpur', state: 'UP' },
-  { id: 'CASE001', nodeType: 'Case', name: 'FIR-2026-00451', type: 'Smuggling', status: 'Active' },
-];
+function getEntityLabel(e: AnyEntity): string {
+  if (e.nodeType === 'Person') return e.name;
+  if (e.nodeType === 'Phone') return e.number;
+  if (e.nodeType === 'Vehicle') return e.licensePlate;
+  if (e.nodeType === 'Organization') return e.name;
+  if (e.nodeType === 'Account') return e.accountNumber;
+  if (e.nodeType === 'Location') return e.name;
+  return e.id;
+}
+
+function getEntitySub(e: AnyEntity): string {
+  if (e.nodeType === 'Person') return `${e.occupation || '—'} · ${e.city || '—'}, ${e.state || '—'}`;
+  if (e.nodeType === 'Phone') return `${e.operator || '—'} · ${e.circle || '—'} · ${e.callCount} calls`;
+  if (e.nodeType === 'Vehicle') return `${e.make} ${e.model} · ${e.color} · ${e.registrationState}`;
+  if (e.nodeType === 'Organization') return `${e.type || '—'} · ${e.city || '—'}`;
+  if (e.nodeType === 'Account') return `${e.bank || '—'} · ${e.accountType}`;
+  if (e.nodeType === 'Location') return `${e.city || '—'}, ${e.state || '—'}`;
+  return '';
+}
+
+function isFlagged(e: AnyEntity): boolean {
+  if (e.nodeType === 'Person') return (e.riskScore || 0) >= 0.6;
+  if (e.nodeType === 'Vehicle') return !!e.flagged;
+  if (e.nodeType === 'Organization') return !!e.flagged;
+  if (e.nodeType === 'Account') return !!e.suspiciousActivity;
+  if (e.nodeType === 'Phone') return e.registeredOwner === 'UNREGISTERED';
+  return false;
+}
+
+function getRisk(e: AnyEntity): number {
+  if (e.nodeType === 'Person') return e.riskScore || 0;
+  return 0;
+}
+
+const PAGE_SIZE = 20;
 
 export default function EntitiesPage() {
   const navigate = useNavigate();
-  const [entities, setEntities] = useState(DEMO_ENTITIES);
-  const [loading, setLoading] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<string>('');
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  const [page, setPage] = useState(1);
 
-  const handleSearch = async (q: string) => {
-    setSearch(q);
-    if (!q && !typeFilter) { setEntities(DEMO_ENTITIES); return; }
-    setLoading(true);
-    try {
-      const res = await api.get(`/api/entities/search?q=${encodeURIComponent(q)}&type=${typeFilter}&limit=50`);
-      setEntities(res.data.entities || DEMO_ENTITIES);
-    } catch {
-      const q_lower = q.toLowerCase();
-      setEntities(DEMO_ENTITIES.filter(e =>
-        (!typeFilter || e.nodeType === typeFilter) &&
-        (!q || Object.values(e).some(v => String(v).toLowerCase().includes(q_lower)))
-      ));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const allEntities: AnyEntity[] = useMemo(() => [
+    ...PERSONS, ...PHONES, ...VEHICLES, ...ORGANISATIONS, ...ACCOUNTS, ...LOCATIONS,
+  ], []);
 
-  const filtered = entities.filter(e =>
-    (!typeFilter || e.nodeType === typeFilter) &&
-    (!search || Object.values(e).some(v => String(v).toLowerCase().includes(search.toLowerCase())))
-  );
+  const filtered = useMemo(() => {
+    return allEntities.filter(e => {
+      if (typeFilter && e.nodeType !== typeFilter) return false;
+      if (flaggedOnly && !isFlagged(e)) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        const label = getEntityLabel(e).toLowerCase();
+        const sub = getEntitySub(e).toLowerCase();
+        if (!label.includes(q) && !sub.includes(q) && !e.id.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [allEntities, typeFilter, flaggedOnly, search]);
 
-  const getLabel = (e: any) => e.name || e.number || e.licensePlate || e.accountNumber || e.id;
-  const getSub = (e: any) => {
-    if (e.nodeType === 'Person') return `${e.alias ? `Alias: ${e.alias} · ` : ''}${e.location || ''}`;
-    if (e.nodeType === 'Phone') return `${e.operator || ''} · ${e.location || ''}`;
-    if (e.nodeType === 'Vehicle') return `${e.make || ''} ${e.model || ''} · ${e.color || ''}`;
-    if (e.nodeType === 'Organization') return `${e.type || ''} · ${e.location || ''}`;
-    if (e.nodeType === 'Account') return `${e.bank || ''} · ${e.accountType || ''}`;
-    if (e.nodeType === 'Location') return `${e.city || ''}, ${e.state || ''}`;
-    return '';
-  };
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+
+  const handleTypeFilter = (t: string) => { setTypeFilter(t === typeFilter ? '' : t); setPage(1); };
+  const handleSearch = (v: string) => { setSearch(v); setPage(1); };
 
   return (
     <div className="fade-in">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: 4 }}>Entity Intelligence</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Browse and analyze all entities in the investigation dataset</p>
+          <h1 style={{ fontSize: '1.5rem', marginBottom: 4 }}>Entity Registry</h1>
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+            {ENTITY_COUNTS.totalEntities} entities across {Object.keys(TYPE_CONFIG).length} types · {ENTITY_COUNTS.totalRelationships} relationships mapped
+          </p>
         </div>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div className="search-input-wrapper" style={{ flex: 1, maxWidth: 400 }}>
-          <Search size={15} className="search-icon" />
-          <input className="form-input" placeholder="Search entities..." value={search} onChange={e => handleSearch(e.target.value)} />
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button className={`btn btn-sm ${!typeFilter ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setTypeFilter(''); handleSearch(search); }}>
-            All
-          </button>
-          {NODE_TYPES.map(t => (
-            <button key={t} className={`btn btn-sm ${typeFilter === t ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => { setTypeFilter(t); handleSearch(search); }}>
-              {t}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        {NODE_TYPES.map(t => {
-          const count = DEMO_ENTITIES.filter(e => e.nodeType === t).length;
-          return count > 0 ? (
-            <div key={t} style={{ padding: '6px 12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', borderRadius: 8, fontSize: '0.8rem' }}>
-              <span className={`badge badge-${t.toLowerCase()}`}>{t}</span>
-              <span style={{ color: 'var(--text-secondary)', marginLeft: 6 }}>{count}</span>
+      {/* Stats row */}
+      <div className="grid-4" style={{ marginBottom: 20, gridTemplateColumns: 'repeat(6, 1fr)' }}>
+        {Object.entries(TYPE_CONFIG).map(([type, cfg]) => {
+          const Icon = cfg.icon;
+          const count = {
+            Person: ENTITY_COUNTS.persons, Phone: ENTITY_COUNTS.phones,
+            Vehicle: ENTITY_COUNTS.vehicles, Organization: ENTITY_COUNTS.organisations,
+            Account: ENTITY_COUNTS.accounts, Location: ENTITY_COUNTS.locations,
+          }[type] || 0;
+          return (
+            <div
+              key={type}
+              onClick={() => handleTypeFilter(type)}
+              className="stat-card"
+              style={{ cursor: 'pointer', borderTop: typeFilter === type ? `3px solid ${cfg.color}` : '3px solid transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 7, background: `${cfg.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon size={14} style={{ color: cfg.color }} />
+                </div>
+                <span className="stat-label">{cfg.label}</span>
+              </div>
+              <div className="stat-value" style={{ fontSize: '1.6rem', color: cfg.color }}>{count}</div>
             </div>
-          ) : null;
+          );
         })}
       </div>
 
-      {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          {[1,2,3,4,5,6].map(i => <div key={i} className="skeleton" style={{ height: 80, borderRadius: 10 }} />)}
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="search-input-wrapper" style={{ flex: 1, minWidth: 280 }}>
+          <Search size={15} className="search-icon" />
+          <input className="form-input" placeholder="Search by name, number, plate, city, bank..." value={search} onChange={e => handleSearch(e.target.value)} />
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon"><Users size={24} /></div>
-          <h3>No entities found</h3>
-          <p>Try a different search term or entity type filter.</p>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
-          {filtered.map(entity => (
-            <div
-              key={entity.id}
-              className="card"
-              style={{ cursor: 'pointer', transition: 'all var(--transition-fast)' }}
-              onClick={() => navigate(`/entities/${entity.nodeType}/${entity.id}`)}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = 'var(--border-accent)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.borderColor = ''; }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                    <span className={`badge badge-${entity.nodeType.toLowerCase()}`}>{entity.nodeType}</span>
-                    {(entity as any).communityId && (
-                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Community {(entity as any).communityId}</span>
+
+        <button
+          onClick={() => { setFlaggedOnly(v => !v); setPage(1); }}
+          className={`btn ${flaggedOnly ? 'btn-danger' : 'btn-secondary'}`}
+          style={{ gap: 6 }}
+        >
+          <Flag size={14} />
+          {flaggedOnly ? 'Flagged Only' : 'Show All'}
+        </button>
+
+        {typeFilter && (
+          <button className="btn btn-secondary btn-sm" onClick={() => { setTypeFilter(''); setPage(1); }}>
+            Clear Filter ✕
+          </button>
+        )}
+
+        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{filtered.length} results</span>
+      </div>
+
+      {/* Table */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Type</th>
+              <th>Name / Value</th>
+              <th>Details</th>
+              <th>Community</th>
+              <th>Risk</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginated.map(e => {
+              const cfg = TYPE_CONFIG[e.nodeType];
+              const Icon = cfg?.icon || Users;
+              const flagged = isFlagged(e);
+              const risk = getRisk(e);
+              return (
+                <tr
+                  key={e.id}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/entities/${e.nodeType}/${e.id}`)}
+                >
+                  <td>
+                    <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#2563eb', fontWeight: 600 }}>
+                      {e.id}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 22, height: 22, borderRadius: 5, background: `${cfg?.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon size={11} style={{ color: cfg?.color }} />
+                      </div>
+                      <span style={{ fontSize: '0.78rem', color: '#475569' }}>{e.nodeType}</span>
+                    </div>
+                  </td>
+                  <td style={{ fontWeight: 600, color: '#0f172a', maxWidth: 180 }}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {getEntityLabel(e)}
+                    </div>
+                    {e.nodeType === 'Person' && (e as any).alias && (
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>alias: {(e as any).alias}</div>
                     )}
-                  </div>
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {getLabel(entity)}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{getSub(entity)}</div>
-                  <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: 4 }}>{entity.id}</div>
-                </div>
-                <ChevronRight size={14} color="var(--text-muted)" style={{ flexShrink: 0, marginTop: 4 }} />
-              </div>
-            </div>
-          ))}
+                  </td>
+                  <td style={{ maxWidth: 220 }}>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {getEntitySub(e)}
+                    </div>
+                  </td>
+                  <td>
+                    {e.nodeType === 'Person' && (e as any).communityId ? (
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 6,
+                        background: { C1: 'rgba(37,99,235,0.08)', C2: 'rgba(124,58,237,0.08)', C3: 'rgba(22,163,74,0.08)' }[(e as any).communityId] || '#f1f5f9',
+                        color: { C1: '#1d4ed8', C2: '#6d28d9', C3: '#15803d' }[(e as any).communityId] || '#475569',
+                        fontSize: '0.72rem', fontWeight: 600,
+                      }}>
+                        {(e as any).communityId}
+                      </span>
+                    ) : <span style={{ color: '#e2e8f0' }}>—</span>}
+                  </td>
+                  <td>
+                    {risk > 0 ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 50, height: 4, background: '#e2e8f0', borderRadius: 2 }}>
+                          <div style={{ width: `${risk * 100}%`, height: '100%', borderRadius: 2, background: risk > 0.7 ? '#dc2626' : risk > 0.5 ? '#ea580c' : '#ca8a04' }} />
+                        </div>
+                        <span style={{ fontSize: '0.72rem', color: risk > 0.7 ? '#dc2626' : '#64748b', fontWeight: 600 }}>
+                          {Math.round(risk * 100)}%
+                        </span>
+                      </div>
+                    ) : <span style={{ color: '#e2e8f0', fontSize: '0.72rem' }}>N/A</span>}
+                  </td>
+                  <td>
+                    {flagged ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#b91c1c', fontSize: '0.72rem', fontWeight: 600 }}>
+                        <AlertTriangle size={11} /> Flagged
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#15803d', fontSize: '0.72rem' }}>
+                        <CheckCircle size={11} /> Clear
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {paginated.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                  No entities match the current filters.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, fontSize: '0.8rem', color: '#94a3b8' }}>
+        <span>Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(1)}>«</button>
+          <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹</button>
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            const pg = Math.max(1, Math.min(page - 2, totalPages - 4)) + i;
+            return (
+              <button key={pg} onClick={() => setPage(pg)} className={`btn btn-sm ${pg === page ? 'btn-primary' : 'btn-secondary'}`}>
+                {pg}
+              </button>
+            );
+          })}
+          <button className="btn btn-secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>›</button>
+          <button className="btn btn-secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage(totalPages)}>»</button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
