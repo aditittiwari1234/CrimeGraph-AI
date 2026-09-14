@@ -102,6 +102,29 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
   }
 });
 
+// GET /api/evidence/:id — get single evidence record
+router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const result = await query(
+      `SELECT el.*, u.full_name as created_by_name 
+       FROM evidence_ledger el 
+       LEFT JOIN users u ON el.created_by = u.id 
+       WHERE el.evidence_id = $1 OR el.id::text = $1`,
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'Evidence record not found' });
+      return;
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    logger.error('Get evidence by id error:', error);
+    res.status(500).json({ error: 'Failed to fetch evidence record' });
+  }
+});
+
 // POST /api/evidence/:id/verify — verify integrity
 router.post('/:id/verify', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {

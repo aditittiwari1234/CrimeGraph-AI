@@ -963,9 +963,26 @@ export default function InvestigationDetailPage() {
                       {/* Top row */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <span className="font-mono" style={{ fontSize: '0.85rem', color: '#7c3aed', fontWeight: 800 }}>
+                          <button
+                            onClick={() => navigate(`/evidence/${encodeURIComponent(evd.evidence_id)}`)}
+                            className="font-mono"
+                            style={{
+                              fontSize: '0.85rem',
+                              color: '#059669',
+                              fontWeight: 800,
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              textDecoration: 'underline',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}
+                            title="Inspect full evidence ledger block"
+                          >
                             {evd.evidence_id}
-                          </span>
+                          </button>
                           <span className="badge badge-neutral" style={{ textTransform: 'uppercase', fontSize: '0.65rem' }}>
                             {evd.evidence_type?.replace(/_/g, ' ')}
                           </span>
@@ -1040,15 +1057,25 @@ export default function InvestigationDetailPage() {
                       )}
 
                       {/* Verification button */}
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => verifyEvidence(evd.evidence_id)}
-                        disabled={isVerifying}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem' }}
-                      >
-                        <Shield size={13} color="#7c3aed" />
-                        <span>{isVerifying ? 'Verifying SHA-256...' : 'Verify Cryptographic Integrity'}</span>
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => verifyEvidence(evd.evidence_id)}
+                          disabled={isVerifying}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem' }}
+                        >
+                          <Shield size={13} color="#7c3aed" />
+                          <span>{isVerifying ? 'Verifying SHA-256...' : 'Verify Cryptographic Integrity'}</span>
+                        </button>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => navigate(`/evidence/${encodeURIComponent(evd.evidence_id)}`)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#059669' }}
+                        >
+                          <ExternalLink size={13} />
+                          <span>Inspect Evidence Ledger</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

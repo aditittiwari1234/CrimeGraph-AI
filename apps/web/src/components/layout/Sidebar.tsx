@@ -104,8 +104,43 @@ export default function Sidebar() {
     return () => { mounted = false; };
   }, [entityType, entityId]);
 
-  const isEntityContext = Boolean(entityType && entityId && (isEntityDetail || !investigationId));
-  const isInvestigationContext = Boolean(investigationId && !isEntityDetail);
+  // Evidence context
+  const evidenceMatch = location.pathname.match(/^\/evidence\/([^/]+)$/);
+  const isEvidenceDetail = Boolean(evidenceMatch);
+  const evidenceId = evidenceMatch
+    ? decodeURIComponent(evidenceMatch[1])
+    : null;
+  const currentEvidenceTab = new URLSearchParams(location.search).get('tab') || 'details';
+  const [evidenceMeta, setEvidenceMeta] = useState<{ type: string; title?: string } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    if (evidenceId) {
+      api.get(`/api/evidence/${encodeURIComponent(evidenceId)}`)
+        .then(res => {
+          if (mounted && res.data) {
+            const ev = res.data;
+            const blockData = typeof ev.block_data === 'string' ? JSON.parse(ev.block_data) : ev.block_data;
+            setEvidenceMeta({
+              type: ev.evidence_type || 'document',
+              title: blockData?.title || ev.evidence_id,
+            });
+          }
+        })
+        .catch(() => {
+          if (mounted) {
+            setEvidenceMeta({ type: 'document', title: evidenceId });
+          }
+        });
+    } else {
+      setEvidenceMeta(null);
+    }
+    return () => { mounted = false; };
+  }, [evidenceId]);
+
+  const isEvidenceContext = Boolean(isEvidenceDetail && evidenceId);
+  const isEntityContext = Boolean(!isEvidenceContext && entityType && entityId && (isEntityDetail || !investigationId));
+  const isInvestigationContext = Boolean(!isEvidenceContext && investigationId && !isEntityDetail);
 
   const investigationItems = investigationId ? [
     { path: `/investigations/${encodeURIComponent(investigationId)}?tab=overview`, label: 'Overview', icon: FolderOpen },
@@ -157,6 +192,45 @@ export default function Sidebar() {
     },
   ] : [];
 
+  const evidenceItems = evidenceId ? [
+    {
+      path: `/evidence/${encodeURIComponent(evidenceId)}?tab=details`,
+      label: 'Block Details',
+      icon: FileText,
+      tab: 'details',
+    },
+    {
+      path: `/evidence/${encodeURIComponent(evidenceId)}?tab=chain`,
+      label: 'Hash Chain',
+      icon: Shield,
+      tab: 'chain',
+    },
+    {
+      path: `/evidence/${encodeURIComponent(evidenceId)}?tab=verify`,
+      label: 'Integrity Proof',
+      icon: Activity,
+      tab: 'verify',
+    },
+    {
+      path: `/evidence/${encodeURIComponent(evidenceId)}?tab=entity`,
+      label: 'Linked Entity',
+      icon: Users,
+      tab: 'entity',
+    },
+    {
+      path: `/evidence/${encodeURIComponent(evidenceId)}?tab=source`,
+      label: 'Source Material',
+      icon: FileText,
+      tab: 'source',
+    },
+    {
+      path: `/evidence/${encodeURIComponent(evidenceId)}?tab=audit`,
+      label: 'Court Certificate',
+      icon: BookOpen,
+      tab: 'audit',
+    },
+  ] : [];
+
   const grouped = sections.map(s => ({
     ...s,
     items: navItems.filter(i =>
@@ -204,8 +278,69 @@ export default function Sidebar() {
 
       {/* Nav */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
+        {/* Evidence Context Navigation */}
+        {isEvidenceContext && evidenceId && (
+          <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #e2e8f0' }}>
+            <div style={{ padding: '10px 10px 4px', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#059669' }}>
+              Current Evidence
+            </div>
+            <div style={{ padding: '4px 10px 2px', fontSize: '0.82rem', fontWeight: 700, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {evidenceMeta?.title || evidenceId}
+            </div>
+            <div style={{ padding: '0 10px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                fontSize: '0.62rem',
+                padding: '1px 5px',
+                borderRadius: 4,
+                background: 'rgba(5, 150, 105, 0.12)',
+                color: '#059669',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+              }}>
+                {evidenceMeta?.type?.replace(/_/g, ' ') || 'EVIDENCE'}
+              </span>
+              <span className="font-mono" style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                {evidenceId}
+              </span>
+            </div>
+            <NavLink
+              to="/evidence"
+              style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2, color: '#475569' }}
+            >
+              <Shield size={15} style={{ color: '#94a3b8' }} />
+              <span>All Evidence</span>
+            </NavLink>
+            {evidenceItems.map(item => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                style={({ isActive }) => {
+                  const itemIsActive = isEvidenceDetail && currentEvidenceTab === item.tab;
+                  return {
+                    display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8,
+                    fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2,
+                    color: itemIsActive ? '#059669' : '#475569',
+                    background: itemIsActive ? 'rgba(5, 150, 105, 0.08)' : 'transparent',
+                    border: itemIsActive ? '1px solid rgba(5, 150, 105, 0.25)' : '1px solid transparent',
+                  };
+                }}
+              >
+                {({ isActive }) => {
+                  const itemIsActive = isEvidenceDetail && currentEvidenceTab === item.tab;
+                  return (
+                    <>
+                      <item.icon size={15} style={{ color: itemIsActive ? '#059669' : '#94a3b8' }} />
+                      <span>{item.label}</span>
+                    </>
+                  );
+                }}
+              </NavLink>
+            ))}
+          </div>
+        )}
+
         {/* Entity Context Navigation */}
-        {isEntityContext && entityType && entityId && (
+        {!isEvidenceContext && isEntityContext && entityType && entityId && (
           <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #e2e8f0' }}>
             <div style={{ padding: '10px 10px 4px', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: nodeColors[entityType] || '#2563eb' }}>
               Current Entity
@@ -272,7 +407,7 @@ export default function Sidebar() {
         )}
 
         {/* Investigation Context Navigation */}
-        {!isEntityContext && isInvestigationContext && investigationId && (
+        {!isEvidenceContext && !isEntityContext && isInvestigationContext && investigationId && (
           <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #e2e8f0' }}>
             <div style={{ padding: '10px 10px 4px', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#7c3aed' }}>
               Current Investigation
@@ -313,7 +448,7 @@ export default function Sidebar() {
         )}
 
         {/* Default Navigation Sections */}
-        {!isEntityContext && !isInvestigationContext && grouped.map(section => (
+        {!isEvidenceContext && !isEntityContext && !isInvestigationContext && grouped.map(section => (
           <div key={section.key} style={{ marginBottom: 4 }}>
             <div style={{
               padding: '10px 10px 4px',

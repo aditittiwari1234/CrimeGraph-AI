@@ -135,8 +135,41 @@ export default function Topbar() {
     return () => { mounted = false; };
   }, [entityType, entityId]);
 
-  const isEntityContext = Boolean(entityType && entityId && (isEntityDetail || !investigationId));
-  const isInvestigationContext = Boolean(investigationId && !isEntityDetail);
+  // Evidence context
+  const evidenceMatch = location.pathname.match(/^\/evidence\/([^/]+)$/);
+  const isEvidenceDetail = Boolean(evidenceMatch);
+  const evidenceId = evidenceMatch
+    ? decodeURIComponent(evidenceMatch[1])
+    : null;
+  const currentEvidenceTab = new URLSearchParams(location.search).get('tab') || 'details';
+  const [evidenceMeta, setEvidenceMeta] = useState<{ type: string; title?: string } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    if (evidenceId) {
+      api.get(`/api/evidence/${encodeURIComponent(evidenceId)}`)
+        .then(res => {
+          if (mounted && res.data) {
+            const ev = res.data;
+            const blockData = typeof ev.block_data === 'string' ? JSON.parse(ev.block_data) : ev.block_data;
+            setEvidenceMeta({
+              type: ev.evidence_type || 'document',
+              title: blockData?.title || ev.evidence_id,
+            });
+          }
+        })
+        .catch(() => {
+          if (mounted) setEvidenceMeta({ type: 'document', title: evidenceId });
+        });
+    } else {
+      setEvidenceMeta(null);
+    }
+    return () => { mounted = false; };
+  }, [evidenceId]);
+
+  const isEvidenceContext = Boolean(isEvidenceDetail && evidenceId);
+  const isEntityContext = Boolean(!isEvidenceContext && entityType && entityId && (isEntityDetail || !investigationId));
+  const isInvestigationContext = Boolean(!isEvidenceContext && investigationId && !isEntityDetail);
 
   const entityTab = location.pathname === '/network'
     ? 'network graph'
@@ -146,7 +179,57 @@ export default function Topbar() {
 
   return (
     <header className="topbar">
-      {isEntityContext && entityType && entityId ? (
+      {isEvidenceContext && evidenceId ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+          <span
+            onClick={() => navigate('/evidence')}
+            style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', cursor: 'pointer' }}
+            title="Back to All Evidence"
+          >
+            Evidence
+          </span>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
+          <span
+            onClick={() => navigate('/evidence')}
+            style={{
+              color: '#059669',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+            }}
+            title="Evidence Ledger"
+          >
+            {evidenceMeta?.type?.replace(/_/g, ' ') || 'RECORD'}
+          </span>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
+          <span
+            onClick={() => navigate(`/evidence/${encodeURIComponent(evidenceId)}?tab=details`)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 700,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              cursor: 'pointer',
+            }}
+            title={`View ${evidenceMeta?.title || evidenceId}`}
+          >
+            {evidenceMeta?.title && evidenceMeta.title !== evidenceId ? (
+              <>
+                <span>{evidenceMeta.title}</span>
+                <span className="font-mono" style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600 }}>
+                  ({evidenceId})
+                </span>
+              </>
+            ) : (
+              <span className="font-mono">{evidenceId}</span>
+            )}
+          </span>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
+          <span style={{ color: '#059669', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+            {currentEvidenceTab.replace(/-/g, ' ')}
+          </span>
+        </div>
+      ) : isEntityContext && entityType && entityId ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
           <span
             onClick={() => navigate('/entities')}

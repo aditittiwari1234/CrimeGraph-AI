@@ -248,7 +248,14 @@ export default function EntityDetailPage() {
             {relationships.map((rel, i) => rel.properties?.recordRef ? (
               <div key={i} className={`evidence-record source-type-${rel.properties?.source?.toLowerCase().startsWith('cdr') ? 'cdr' : rel.properties?.source?.toLowerCase().startsWith('fir') ? 'fir' : rel.properties?.source?.toLowerCase().includes('bank') ? 'financial' : 'surveillance'}`}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-                  <span className="evidence-id">{rel.properties.recordRef}</span>
+                  <span
+                    className="evidence-id"
+                    onClick={() => navigate(`/evidence/${encodeURIComponent(rel.properties.recordRef)}`)}
+                    style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                    title="Inspect Evidence Ledger Record"
+                  >
+                    {rel.properties.recordRef}
+                  </span>
                   <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{rel.type.replace(/_/g, ' ')}</span>
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>

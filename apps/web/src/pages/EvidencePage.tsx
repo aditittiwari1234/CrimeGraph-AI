@@ -165,7 +165,12 @@ export default function EvidencePage() {
 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                    <span className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-accent)', fontWeight: 600 }}>
+                    <span
+                      className="font-mono"
+                      onClick={() => navigate(`/evidence/${encodeURIComponent(evd.evidence_id)}`)}
+                      style={{ fontSize: '0.85rem', color: '#2563eb', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                      title="Inspect full evidence ledger record"
+                    >
                       {evd.evidence_id}
                     </span>
                     <span className="badge badge-neutral">{evd.evidence_type.replace(/_/g, ' ')}</span>
@@ -213,14 +218,22 @@ export default function EvidencePage() {
                     </div>
                   )}
 
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => verifyEvidence(evd.evidence_id)}
-                    disabled={verifying === evd.evidence_id}
-                  >
-                    <Shield size={12} />
-                    {verifying === evd.evidence_id ? 'Verifying...' : 'Verify Integrity'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => verifyEvidence(evd.evidence_id)}
+                      disabled={verifying === evd.evidence_id}
+                    >
+                      <Shield size={12} />
+                      {verifying === evd.evidence_id ? 'Verifying...' : 'Verify Integrity'}
+                    </button>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => navigate(`/evidence/${encodeURIComponent(evd.evidence_id)}`)}
+                    >
+                      Inspect Record
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

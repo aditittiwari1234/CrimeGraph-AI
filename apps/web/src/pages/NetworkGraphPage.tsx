@@ -334,7 +334,7 @@ export default function NetworkGraphPage() {
   };
 
   useEffect(() => {
-    if (investigationCase) return;
+    if (investigationCase || entityIdParam) return;
     Promise.all([
       api.get('/api/investigations/officers'),
       api.get('/api/investigations?limit=50'),
@@ -345,7 +345,7 @@ export default function NetworkGraphPage() {
       setOfficers([]);
       setCases([]);
     });
-  }, [investigationCase]);
+  }, [investigationCase, entityIdParam]);
 
   const renderDemoGraph = (cy: Core) => {
     const demoNodes: GraphNode[] = (ALL_ENTITIES as any[]).map(e => ({
@@ -466,7 +466,7 @@ export default function NetworkGraphPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - var(--topbar-height) - 48px)', gap: 12 }}>
-      {!investigationCase && (
+      {!investigationCase && !entityIdParam && (
         <div className="card" style={{ padding: '12px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
             <div>
@@ -502,6 +502,11 @@ export default function NetworkGraphPage() {
       )}
       {investigationCase && (
         <div className="ai-disclaimer">Focused investigation graph: <strong>{investigationCase}</strong>. Expand nodes to inspect related people, accounts, locations, and communications.</div>
+      )}
+      {entityIdParam && (
+        <div className="ai-disclaimer">
+          Focused entity graph: <strong>{entityTypeParam} · {entityIdParam}</strong>. Exploring connections, direct relationships, and link predictions.
+        </div>
       )}
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
