@@ -53,6 +53,68 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
     }
   };
 
+  if (!activeDatabase) {
+    if (compact) {
+      return (
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 12px',
+            background: '#eff6ff',
+            border: '1px dashed #3b82f6',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontSize: '0.78rem',
+            color: '#2563eb',
+            fontWeight: 700,
+          }}
+          title="Connect Database"
+        >
+          <Plus size={13} />
+          <span>Connect Database</span>
+        </button>
+      );
+    }
+
+    return (
+      <div style={{
+        background: '#ffffff',
+        border: '1px dashed #cbd5e1',
+        borderRadius: 12,
+        padding: '16px 20px',
+        marginBottom: 20,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Database size={20} color="#2563eb" />
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.95rem' }}>No Database Connected</div>
+            <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
+              Connect your PostgreSQL, MongoDB, MySQL, or Neo4j database to explore tables and collections.
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="btn btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', padding: '7px 16px' }}
+        >
+          <Plus size={14} />
+          <span>Connect Database</span>
+        </button>
+      </div>
+    );
+  }
+
   const engineMeta = ENGINE_LABELS[activeDatabase.type] || { label: activeDatabase.type, color: '#475569', bg: '#f1f5f9' };
 
   if (compact) {

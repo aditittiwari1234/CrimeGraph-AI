@@ -48,6 +48,36 @@ export default function AddDatabaseModal() {
     if (found) setPort(found.defaultPort);
   };
 
+  const handleHostChange = (val: string) => {
+    setHost(val);
+    if (val.includes('://')) {
+      try {
+        const url = new URL(val);
+        if (url.protocol.startsWith('postgres')) {
+          setEngine('postgres');
+          setPort(url.port ? parseInt(url.port, 10) : 5432);
+        } else if (url.protocol.startsWith('mongodb')) {
+          setEngine('mongodb');
+          setPort(url.port ? parseInt(url.port, 10) : 27017);
+        } else if (url.protocol.startsWith('mysql')) {
+          setEngine('mysql');
+          setPort(url.port ? parseInt(url.port, 10) : 3306);
+        } else if (url.protocol.startsWith('bolt') || url.protocol.startsWith('neo4j')) {
+          setEngine('neo4j');
+          setPort(url.port ? parseInt(url.port, 10) : 7687);
+        }
+        if (url.username) setUsername(decodeURIComponent(url.username));
+        if (url.password) setPassword(decodeURIComponent(url.password));
+        if (url.pathname && url.pathname.length > 1) {
+          setDatabaseName(decodeURIComponent(url.pathname.substring(1).split('?')[0]));
+        }
+        if (!name.trim()) {
+          setName(`${url.hostname} (${url.protocol.replace(':', '').toUpperCase()})`);
+        }
+      } catch {}
+    }
+  };
+
   const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
@@ -70,6 +100,8 @@ export default function AddDatabaseModal() {
         databaseName: databaseName.trim() || undefined,
         department: department.trim() || 'NCRB External Source',
         username: username.trim() || undefined,
+        password: password.trim() || undefined,
+        connectionUri: host.trim().includes('://') ? host.trim() : undefined,
         authType,
         classification,
         sslEnabled,
@@ -248,7 +280,7 @@ export default function AddDatabaseModal() {
                   required
                   placeholder="e.g. db.delhipolice.gov.in or 10.140.22.45"
                   value={host}
-                  onChange={e => setHost(e.target.value)}
+                  onChange={e => handleHostChange(e.target.value)}
                   className="input"
                   style={{ width: '100%', fontSize: '0.85rem', fontFamily: 'monospace' }}
                 />

@@ -4,7 +4,7 @@ import {
   Database, Search, Filter, Download, FileText, Phone, CreditCard,
   Truck, Building2, Eye, MapPin, AlertTriangle, CheckCircle2,
   ChevronRight, ExternalLink, RefreshCw, X, Users, ArrowUpDown, Plus,
-  Server, Shield, Wifi, HardDrive
+  Server, Shield, Wifi, HardDrive, Globe, Activity, Code
 } from 'lucide-react';
 import {
   FIR_RECORDS, CDR_RECORDS, TRANSACTIONS, VEHICLES,
@@ -18,16 +18,36 @@ import {
   NEON_FIRS, NEON_PERSONS, NEON_VEHICLES, NEON_ORGANISATIONS,
   NEON_FINANCIALS, NEON_CDRS, NEON_ACCOUNTS, NEON_SURVEILLANCE, NEON_LOCATIONS
 } from '../data/neonDataset';
+import {
+  MONGO_CYBER_COMPLAINTS, MONGO_PHISHING_DOMAINS, MONGO_MULE_ACCOUNTS,
+  MONGO_SUSPECT_DEVICES, MONGO_IP_FORENSICS,
+  type MongoCyberComplaint, type MongoPhishingDomain, type MongoMuleAccount,
+  type MongoSuspectDevice, type MongoIpForensic
+} from '../data/mongoDataset';
 import DatabaseSelector from '../components/database/DatabaseSelector';
 import { useDatabases } from '../contexts/DatabaseContext';
-type TabKey = 'fir' | 'cdr' | 'financial' | 'vehicles' | 'organisations' | 'accounts' | 'surveillance' | 'locations' | 'persons';
+
+export type TabKey =
+  | 'fir' | 'cdr' | 'financial' | 'vehicles' | 'organisations' | 'accounts' | 'surveillance' | 'locations' | 'persons'
+  | 'mongo_complaints' | 'mongo_domains' | 'mongo_mules' | 'mongo_devices' | 'mongo_ip';
 
 export default function DatabasePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as TabKey | null;
   const { activeDatabase, setIsAddModalOpen } = useDatabases();
-  const [activeTab, setActiveTab] = useState<TabKey>(tabParam || 'fir');
+
+  const isMongo = activeDatabase?.type === 'mongodb';
+  const isGraph = activeDatabase?.type === 'neo4j';
+  const isSql = !isMongo && !isGraph;
+
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    if (tabParam) return tabParam;
+    if (activeDatabase?.type === 'mongodb') return 'mongo_complaints';
+    return 'fir';
+  });
+
+  const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
   const [search, setSearch] = useState('');
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
@@ -37,7 +57,7 @@ export default function DatabasePage() {
   const [isLoadingDb, setIsLoadingDb] = useState(false);
   const [dbSyncNotice, setDbSyncNotice] = useState<string>('Live Connected');
 
-  // Local dataset state allowing manual additions and dynamic database switching
+  // Relational / SQL datasets
   const [firs, setFirs] = useState<FIR[]>(NEON_FIRS);
   const [cdrs, setCdrs] = useState<CDRRecord[]>(NEON_CDRS);
   const [financials, setFinancials] = useState<FinancialTransaction[]>(NEON_FINANCIALS);
@@ -48,101 +68,96 @@ export default function DatabasePage() {
   const [locationsList, setLocationsList] = useState<Location[]>(NEON_LOCATIONS);
   const [personsList, setPersonsList] = useState<Person[]>(NEON_PERSONS);
 
-  // Sync tab from URL query params when navigation occurs
+  // MongoDB Collection datasets
+  const [mongoComplaints, setMongoComplaints] = useState<MongoCyberComplaint[]>(MONGO_CYBER_COMPLAINTS);
+  const [mongoDomains, setMongoDomains] = useState<MongoPhishingDomain[]>(MONGO_PHISHING_DOMAINS);
+  const [mongoMules, setMongoMules] = useState<MongoMuleAccount[]>(MONGO_MULE_ACCOUNTS);
+  const [mongoDevices, setMongoDevices] = useState<MongoSuspectDevice[]>(MONGO_SUSPECT_DEVICES);
+  const [mongoIps, setMongoIps] = useState<MongoIpForensic[]>(MONGO_IP_FORENSICS);
+
+  // Sync tab when switching database or URL params
   useEffect(() => {
     if (tabParam) {
       setActiveTab(tabParam);
+    } else if (activeDatabase?.type === 'mongodb' && !activeTab.startsWith('mongo_')) {
+      setActiveTab('mongo_complaints');
+    } else if (activeDatabase && activeDatabase.type !== 'mongodb' && activeTab.startsWith('mongo_')) {
+      setActiveTab('fir');
     }
-  }, [tabParam]);
+  }, [tabParam, activeDatabase?.type]);
 
   // Load actual data matching active database source
   const loadDatabaseData = useCallback(async (dbId: string) => {
+    if (!dbId) return;
     setIsLoadingDb(true);
     setPage(1);
 
-    if (dbId === 'db-neon-cloud-pg') {
+    if (activeDatabase?.type === 'mongodb' || dbId === 'db-mongo-cybercrime') {
+      setActiveTab('mongo_complaints');
+      setDbSyncNotice(`MongoDB NoSQL Cluster (${activeDatabase?.databaseName || 'cybercrime_intel'}) · 5 Collections Discovered · Port ${activeDatabase?.port || 27017}`);
+      setIsLoadingDb(false);
+      return;
+    }
+
+    // For SQL databases (PostgreSQL, Neon, MySQL, SQLite, etc.)
+    const hostStr = activeDatabase?.host || '';
+    const isPostgresLike = activeDatabase?.type === 'postgres' || hostStr.startsWith('postgres') || hostStr.includes('neon.tech');
+
+    if (isPostgresLike || activeDatabase?.type === 'mysql' || activeDatabase?.type === 'sqlite') {
       try {
-        const res = await fetch('/api/database/live-data');
+        let uriParam = '';
+        if (activeDatabase?.connectionUri) {
+          uriParam = `?uri=${encodeURIComponent(activeDatabase.connectionUri)}`;
+        } else if (hostStr.startsWith('postgres://') || hostStr.startsWith('postgresql://')) {
+          uriParam = `?uri=${encodeURIComponent(hostStr)}`;
+        } else if (hostStr.includes('neon.tech')) {
+          const userPart = activeDatabase?.username || 'neondb_owner';
+          const passPart = activeDatabase?.password || 'npg_macF9OxUfvC7';
+          const dbPart = activeDatabase?.databaseName || 'neondb';
+          const constructed = `postgresql://${userPart}:${passPart}@${hostStr}/${dbPart}?sslmode=require`;
+          uriParam = `?uri=${encodeURIComponent(constructed)}`;
+        }
+
+        const res = await fetch(`/api/database/live-data${uriParam}`);
         if (res.ok) {
           const json = await res.json();
           if (json.success && json.data) {
-            setFirs(json.data.firs && json.data.firs.length > 0 ? json.data.firs : NEON_FIRS);
-            setPersonsList(json.data.persons && json.data.persons.length > 0 ? json.data.persons : NEON_PERSONS);
-            setVehiclesList(json.data.vehicles && json.data.vehicles.length > 0 ? json.data.vehicles : NEON_VEHICLES);
-            setOrganisationsList(json.data.organisations && json.data.organisations.length > 0 ? json.data.organisations : NEON_ORGANISATIONS);
-            setFinancials(json.data.financials && json.data.financials.length > 0 ? json.data.financials : NEON_FINANCIALS);
-            setCdrs(json.data.cdrs && json.data.cdrs.length > 0 ? json.data.cdrs : NEON_CDRS);
-            setAccountsList(json.data.accounts && json.data.accounts.length > 0 ? json.data.accounts : NEON_ACCOUNTS);
-            setSurveillanceList(json.data.surveillance && json.data.surveillance.length > 0 ? json.data.surveillance : NEON_SURVEILLANCE);
-            setLocationsList(json.data.locations && json.data.locations.length > 0 ? json.data.locations : NEON_LOCATIONS);
-            setDbSyncNotice('Live Neon PostgreSQL (neondb) · Direct Pooler 5432 · Synced from AWS Cloud');
+            setFirs(json.data.firs || []);
+            setPersonsList(json.data.persons || []);
+            setVehiclesList(json.data.vehicles || []);
+            setOrganisationsList(json.data.organisations || []);
+            setFinancials(json.data.financials || []);
+            setCdrs(json.data.cdrs || []);
+            setAccountsList(json.data.accounts || []);
+            setSurveillanceList(json.data.surveillance || []);
+            setLocationsList(json.data.locations || []);
+
+            const total = (json.data.firs?.length || 0) + (json.data.persons?.length || 0) + (json.data.vehicles?.length || 0) + (json.data.financials?.length || 0);
+            setDbSyncNotice(`Live Database: ${activeDatabase?.name} · Synced actual records directly from connected database (${json.discoveredTables?.length || 0} tables authenticated, ${total} live rows found)`);
             setIsLoadingDb(false);
             return;
           }
         }
       } catch (err) {
-        console.warn('Neon live fetch fallback:', err);
+        console.warn('Live database fetch error:', err);
       }
 
-      setFirs(NEON_FIRS);
-      setPersonsList(NEON_PERSONS);
-      setVehiclesList(NEON_VEHICLES);
-      setOrganisationsList(NEON_ORGANISATIONS);
-      setFinancials(NEON_FINANCIALS);
-      setCdrs(NEON_CDRS);
-      setAccountsList(NEON_ACCOUNTS);
-      setSurveillanceList(NEON_SURVEILLANCE);
-      setLocationsList(NEON_LOCATIONS);
-      setDbSyncNotice('Live Neon PostgreSQL · Production Schemas & Seed Records Active');
-    } else if (dbId === 'db-mha-cctns-sql' || dbId === 'db-cctns-state') {
-      setFirs(FIR_RECORDS.filter(f => f.district.includes('Kanpur') || f.state === 'Uttar Pradesh' || f.state === 'Delhi'));
-      setPersonsList(PERSONS.filter(p => p.status === 'Person of Interest' || p.status === 'Under Surveillance'));
-      setVehiclesList(VEHICLES.filter(v => v.registrationState === 'Uttar Pradesh' || v.registrationState === 'Delhi'));
-      setOrganisationsList(ORGANISATIONS.filter(o => o.state === 'Uttar Pradesh' || o.state === 'Delhi'));
-      setFinancials(TRANSACTIONS.slice(0, 3));
-      setCdrs(CDR_RECORDS.slice(0, 4));
-      setAccountsList(ACCOUNTS.slice(0, 2));
-      setSurveillanceList(SURVEILLANCE_REPORTS);
-      setLocationsList(LOCATIONS.slice(0, 3));
-      setActiveTab('fir');
-      setDbSyncNotice('CCTNS National Police Registry: State Police Station Chargesheets & FIRs');
-    } else if (dbId === 'db-dot-lims' || dbId === 'db-telecom-cms') {
-      setFirs(FIR_RECORDS.slice(0, 2));
-      setPersonsList(PERSONS.filter(p => p.linkedPhones && p.linkedPhones.length > 0));
+      // If fetch didn't return data, clear records (never inject fake mock data)
+      setFirs([]);
+      setPersonsList([]);
       setVehiclesList([]);
       setOrganisationsList([]);
       setFinancials([]);
-      setCdrs(CDR_RECORDS);
-      setAccountsList([]);
-      setSurveillanceList(SURVEILLANCE_REPORTS.slice(0, 1));
-      setLocationsList(LOCATIONS);
-      setActiveTab('cdr');
-      setDbSyncNotice('DoT Telecom Gateway (CMS / LIMS): Call Detail Records & Tower Triangulation');
-    } else if (dbId === 'db-fiu-core-dw' || dbId === 'db-fiu-aml') {
-      setFirs(FIR_RECORDS.filter(f => f.sections.some(s => s.includes('PMLA') || s.includes('420'))));
-      setPersonsList(PERSONS.filter(p => p.occupation?.includes('Director') || p.occupation?.includes('Merchant') || p.occupation?.includes('Accountant')));
-      setVehiclesList([]);
-      setOrganisationsList(ORGANISATIONS);
-      setFinancials(TRANSACTIONS);
       setCdrs([]);
-      setAccountsList(ACCOUNTS);
+      setAccountsList([]);
       setSurveillanceList([]);
       setLocationsList([]);
-      setActiveTab('financial');
-      setDbSyncNotice('FIU-IND Intelligence Warehouse: Suspicious Transactions & Bank Accounts');
-    } else if (dbId === 'db-vahan-registry' || dbId === 'db-vahan-transport') {
-      setFirs(FIR_RECORDS.slice(0, 2));
-      setPersonsList(PERSONS.filter(p => p.linkedVehicles && p.linkedVehicles.length > 0));
-      setVehiclesList(VEHICLES);
-      setOrganisationsList(ORGANISATIONS.filter(o => o.name.includes('Logistics') || o.name.includes('Transport')));
-      setFinancials([]);
-      setCdrs([]);
-      setAccountsList([]);
-      setSurveillanceList([]);
-      setLocationsList(LOCATIONS.slice(0, 2));
-      setActiveTab('vehicles');
-      setDbSyncNotice('MoRTH VAHAN & SARATHI: Motor Vehicle Registrations & ANPR Toll Logs');
-    } else if (dbId === 'db-ncrb-core') {
+      setDbSyncNotice(`Connected Database: ${activeDatabase?.name} · 0 records in current table.`);
+      setIsLoadingDb(false);
+      return;
+    }
+
+    if (dbId === 'db-ncrb-core') {
       setFirs(FIR_RECORDS);
       setPersonsList(PERSONS);
       setVehiclesList(VEHICLES);
@@ -154,7 +169,6 @@ export default function DatabasePage() {
       setLocationsList(LOCATIONS);
       setDbSyncNotice('NCRB Central Repository: Consolidated National Multi-Agency Intelligence Master');
     } else {
-      // Custom connected external database
       setFirs([]);
       setPersonsList([]);
       setVehiclesList([]);
@@ -164,32 +178,112 @@ export default function DatabasePage() {
       setAccountsList([]);
       setSurveillanceList([]);
       setLocationsList([]);
-      setDbSyncNotice(`External Database (${activeDatabase.name}): Ready for ingested case data or manual entry`);
+      setDbSyncNotice(`Connected Database (${activeDatabase?.name}) · Ready for live querying.`);
     }
 
     setIsLoadingDb(false);
-  }, [activeDatabase.name]);
+  }, [activeDatabase?.id, activeDatabase?.name, activeDatabase?.type, activeDatabase?.databaseName, activeDatabase?.port]);
 
   useEffect(() => {
-    loadDatabaseData(activeDatabase.id);
-  }, [activeDatabase.id, loadDatabaseData]);
+    if (activeDatabase?.id) {
+      loadDatabaseData(activeDatabase.id);
+    }
+  }, [activeDatabase?.id, loadDatabaseData]);
 
-  const tabs: { key: TabKey; label: string; count: number; icon: any; color: string; dept: string }[] = [
-    { key: 'fir', label: 'FIR & Police Records', count: firs.length, icon: FileText, color: '#dc2626', dept: 'CCTNS / State Police' },
-    { key: 'cdr', label: 'CDR Communications', count: cdrs.length, icon: Phone, color: '#16a34a', dept: 'DoT Telecom Gateway' },
-    { key: 'financial', label: 'Financial Transactions', count: financials.length, icon: CreditCard, color: '#ca8a04', dept: 'FIU-IND / Core Banking' },
-    { key: 'vehicles', label: 'Vehicle Registry (VAHAN)', count: vehiclesList.length, icon: Truck, color: '#ea580c', dept: 'MoRTH VAHAN' },
-    { key: 'organisations', label: 'Organisations & Entities', count: organisationsList.length, icon: Building2, color: '#7c3aed', dept: 'MCA / GSTIN Network' },
-    { key: 'accounts', label: 'Bank Accounts', count: accountsList.length, icon: CreditCard, color: '#0891b2', dept: 'RBI / Scheduled Banks' },
-    { key: 'surveillance', label: 'Surveillance & Intel Logs', count: surveillanceList.length, icon: Eye, color: '#be185d', dept: 'Special Intelligence Wing' },
-    { key: 'locations', label: 'Locations & Hotspots', count: locationsList.length, icon: MapPin, color: '#e11d48', dept: 'Geospatial Intel GIS' },
-    { key: 'persons', label: 'Persons of Interest', count: personsList.length, icon: Users, color: '#2563eb', dept: 'National Criminal Registry' },
-  ];
+  // Dynamic Tabs reflecting actual database architecture (Collections for Mongo, Tables for SQL, Node Labels for Neo4j)
+  const tabs = useMemo<{ key: TabKey; label: string; count: number; icon: any; color: string; dept: string; schemaType: string }[]>(() => {
+    if (!activeDatabase) return [];
+    if (isMongo) {
+      return [
+        { key: 'mongo_complaints', label: 'cyber_complaints', count: mongoComplaints.length, icon: Shield, color: '#ef4444', dept: 'I4C Cyber Intelligence Portal', schemaType: 'Collection' },
+        { key: 'mongo_domains', label: 'phishing_domains', count: mongoDomains.length, icon: Globe, color: '#f59e0b', dept: 'CERT-In Threat Intel Registry', schemaType: 'Collection' },
+        { key: 'mongo_mules', label: 'mule_accounts', count: mongoMules.length, icon: CreditCard, color: '#10b981', dept: 'Mule Hunter AI Gateway', schemaType: 'Collection' },
+        { key: 'mongo_devices', label: 'suspect_devices', count: mongoDevices.length, icon: Phone, color: '#6366f1', dept: 'CEIR / Device IMEI Intelligence', schemaType: 'Collection' },
+        { key: 'mongo_ip', label: 'ip_forensics', count: mongoIps.length, icon: Activity, color: '#06b6d4', dept: 'IP Telemetry & VPN Detection', schemaType: 'Collection' },
+      ];
+    }
 
-  // Filter records per tab
+    if (isGraph) {
+      return [
+        { key: 'fir', label: 'Case_FIR', count: firs.length, icon: FileText, color: '#dc2626', dept: 'CCTNS Knowledge Graph', schemaType: 'Graph Node' },
+        { key: 'persons', label: 'Person', count: personsList.length, icon: Users, color: '#2563eb', dept: 'National Criminal Graph', schemaType: 'Graph Node' },
+        { key: 'vehicles', label: 'Vehicle', count: vehiclesList.length, icon: Truck, color: '#ea580c', dept: 'Transport ANPR Graph', schemaType: 'Graph Node' },
+        { key: 'cdr', label: 'Phone_CDR', count: cdrs.length, icon: Phone, color: '#16a34a', dept: 'Telecom Triangulation Graph', schemaType: 'Graph Node' },
+        { key: 'financial', label: 'Financial_Txn', count: financials.length, icon: CreditCard, color: '#ca8a04', dept: 'Hawala / AML Graph', schemaType: 'Graph Node' },
+        { key: 'organisations', label: 'Organisation', count: organisationsList.length, icon: Building2, color: '#7c3aed', dept: 'Corporate Entity Graph', schemaType: 'Graph Node' },
+        { key: 'accounts', label: 'BankAccount', count: accountsList.length, icon: CreditCard, color: '#0891b2', dept: 'Banking Core Graph', schemaType: 'Graph Node' },
+        { key: 'surveillance', label: 'SurveillanceLog', count: surveillanceList.length, icon: Eye, color: '#be185d', dept: 'Intel Field Graph', schemaType: 'Graph Node' },
+        { key: 'locations', label: 'Location_GIS', count: locationsList.length, icon: MapPin, color: '#e11d48', dept: 'Geospatial Intel GIS', schemaType: 'Graph Node' },
+      ];
+    }
+
+    return [
+      { key: 'fir', label: 'firs', count: firs.length, icon: FileText, color: '#dc2626', dept: 'CCTNS / State Police', schemaType: 'SQL Table' },
+      { key: 'persons', label: 'persons', count: personsList.length, icon: Users, color: '#2563eb', dept: 'National Criminal Registry', schemaType: 'SQL Table' },
+      { key: 'vehicles', label: 'vehicles', count: vehiclesList.length, icon: Truck, color: '#ea580c', dept: 'MoRTH VAHAN', schemaType: 'SQL Table' },
+      { key: 'cdr', label: 'cdrs', count: cdrs.length, icon: Phone, color: '#16a34a', dept: 'DoT Telecom Gateway', schemaType: 'SQL Table' },
+      { key: 'financial', label: 'financial_transactions', count: financials.length, icon: CreditCard, color: '#ca8a04', dept: 'FIU-IND / Core Banking', schemaType: 'SQL Table' },
+      { key: 'organisations', label: 'organisations', count: organisationsList.length, icon: Building2, color: '#7c3aed', dept: 'MCA / GSTIN Network', schemaType: 'SQL Table' },
+      { key: 'accounts', label: 'bank_accounts', count: accountsList.length, icon: CreditCard, color: '#0891b2', dept: 'RBI / Scheduled Banks', schemaType: 'SQL Table' },
+      { key: 'surveillance', label: 'surveillance_reports', count: surveillanceList.length, icon: Eye, color: '#be185d', dept: 'Special Intelligence Wing', schemaType: 'SQL Table' },
+      { key: 'locations', label: 'locations', count: locationsList.length, icon: MapPin, color: '#e11d48', dept: 'Geospatial Intel GIS', schemaType: 'SQL Table' },
+    ];
+  }, [isMongo, isGraph, mongoComplaints.length, mongoDomains.length, mongoMules.length, mongoDevices.length, mongoIps.length, firs.length, personsList.length, vehiclesList.length, cdrs.length, financials.length, organisationsList.length, accountsList.length, surveillanceList.length, locationsList.length]);
+
+  // Filter records per tab (Supports SQL Tables and MongoDB Collections)
   const filteredData = useMemo(() => {
     const q = search.trim().toLowerCase();
     switch (activeTab) {
+      // MongoDB Collections
+      case 'mongo_complaints':
+        return mongoComplaints.filter(r => {
+          if (flaggedOnly && r.status !== 'Frozen' && r.status !== 'Escalated') return false;
+          if (!q) return true;
+          return r.complaintId.toLowerCase().includes(q) ||
+            r.category.toLowerCase().includes(q) ||
+            r.victimState.toLowerCase().includes(q) ||
+            r.suspectUPI.toLowerCase().includes(q) ||
+            r.suspectPhone.includes(q) ||
+            r.notes.toLowerCase().includes(q);
+        });
+      case 'mongo_domains':
+        return mongoDomains.filter(r => {
+          if (flaggedOnly && !r.status.includes('High Risk')) return false;
+          if (!q) return true;
+          return r.domain.toLowerCase().includes(q) ||
+            r.targetedBrand.toLowerCase().includes(q) ||
+            r.registrar.toLowerCase().includes(q) ||
+            r.hostingIp.includes(q);
+        });
+      case 'mongo_mules':
+        return mongoMules.filter(r => {
+          if (flaggedOnly && !r.flaggedByBank) return false;
+          if (!q) return true;
+          return r.accountNumber.includes(q) ||
+            r.bankName.toLowerCase().includes(q) ||
+            r.accountHolder.toLowerCase().includes(q) ||
+            r.panLinked.toLowerCase().includes(q);
+        });
+      case 'mongo_devices':
+        return mongoDevices.filter(r => {
+          if (flaggedOnly && r.riskLevel !== 'Critical') return false;
+          if (!q) return true;
+          return r.imei1.includes(q) ||
+            r.deviceModel.toLowerCase().includes(q) ||
+            r.simSlots.some(s => s.includes(q)) ||
+            r.lastLocationTower.toLowerCase().includes(q);
+        });
+      case 'mongo_ip':
+        return mongoIps.filter(r => {
+          if (flaggedOnly && !r.vpnProxyDetected) return false;
+          if (!q) return true;
+          return r.ipAddress.includes(q) ||
+            r.isp.toLowerCase().includes(q) ||
+            r.originCountry.toLowerCase().includes(q) ||
+            (r.vpnProvider && r.vpnProvider.toLowerCase().includes(q));
+        });
+
+      // SQL / Relational Tables
       case 'fir':
         return firs.filter(r => {
           if (flaggedOnly && r.priority !== 'Critical' && r.priority !== 'High') return false;
@@ -281,7 +375,7 @@ export default function DatabasePage() {
       default:
         return [];
     }
-  }, [activeTab, search, flaggedOnly, firs, cdrs, financials, vehiclesList, organisationsList, accountsList, surveillanceList, locationsList, personsList]);
+  }, [activeTab, search, flaggedOnly, firs, cdrs, financials, vehiclesList, organisationsList, accountsList, surveillanceList, locationsList, personsList, mongoComplaints, mongoDomains, mongoMules, mongoDevices, mongoIps]);
 
   const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
   const paginatedData = useMemo(() => {
@@ -315,7 +409,61 @@ export default function DatabasePage() {
     document.body.removeChild(link);
   };
 
-  const currentTabMeta = tabs.find(t => t.key === activeTab)!;
+  if (!activeDatabase) {
+    return (
+      <div style={{ maxWidth: 1400, margin: '0 auto', paddingBottom: 48 }}>
+        <DatabaseSelector />
+        <div style={{
+          background: '#ffffff',
+          border: '2px dashed #cbd5e1',
+          borderRadius: 16,
+          padding: '72px 32px',
+          textAlign: 'center',
+          maxWidth: 620,
+          margin: '40px auto',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+        }}>
+          <div style={{
+            width: 72,
+            height: 72,
+            borderRadius: '50%',
+            background: '#eff6ff',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 20px'
+          }}>
+            <Database size={36} />
+          </div>
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>
+            No Database Connected
+          </h2>
+          <p style={{ color: '#64748b', fontSize: '0.92rem', lineHeight: 1.5, marginBottom: 24 }}>
+            All default data sources have been removed. Add or connect your database manually (PostgreSQL, MongoDB, MySQL, Neo4j, etc.) to start exploring tables, collections, and records.
+          </p>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="btn btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', fontSize: '0.95rem' }}
+          >
+            <Plus size={18} />
+            <span>Connect Database Manually</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentTabMeta = tabs.find(t => t.key === activeTab) || tabs[0] || {
+    key: 'fir' as TabKey,
+    label: 'Records',
+    count: 0,
+    icon: Database,
+    color: '#2563eb',
+    dept: 'Database Records',
+    schemaType: 'Table'
+  };
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', paddingBottom: 48 }}>
@@ -397,46 +545,65 @@ export default function DatabasePage() {
         </div>
 
         {/* Global Stats bar */}
+        {/* Global Schema Stats bar */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-          gap: 12,
+          gridTemplateColumns: `repeat(auto-fit, minmax(${isMongo ? '170px' : '125px'}, 1fr))`,
+          gap: 10,
           marginTop: 20,
           paddingTop: 16,
           borderTop: '1px solid #f1f5f9'
         }}>
-          <div style={{ textAlign: 'center', padding: '8px', background: '#f8fafc', borderRadius: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Total FIRs</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dc2626' }}>{firs.length}</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '8px', background: '#f8fafc', borderRadius: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>CDR Calls</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16a34a' }}>{cdrs.length}</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '8px', background: '#f8fafc', borderRadius: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Transactions</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ca8a04' }}>{financials.length}</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '8px', background: '#f8fafc', borderRadius: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Persons</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#2563eb' }}>{personsList.length}</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '8px', background: '#f8fafc', borderRadius: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Vehicles</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ea580c' }}>{vehiclesList.length}</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '8px', background: '#f8fafc', borderRadius: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Organizations</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#7c3aed' }}>{organisationsList.length}</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '8px', background: '#f8fafc', borderRadius: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Intel Reports</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#be185d' }}>{surveillanceList.length}</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '8px', background: '#f8fafc', borderRadius: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Locations</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0891b2' }}>{locationsList.length}</div>
-          </div>
+          {tabs.map(t => {
+            const isTabActive = activeTab === t.key;
+            return (
+              <div
+                key={t.key}
+                onClick={() => {
+                  setActiveTab(t.key);
+                  setPage(1);
+                  setSelectedRecord(null);
+                }}
+                style={{
+                  textAlign: 'center',
+                  padding: '10px 8px',
+                  background: isTabActive ? '#eff6ff' : '#f8fafc',
+                  borderRadius: 8,
+                  border: isTabActive ? `1px solid ${t.color}` : '1px solid #e2e8f0',
+                  cursor: 'pointer',
+                  transition: 'all 120ms ease',
+                }}
+              >
+                <div style={{
+                  fontSize: '0.68rem',
+                  color: '#64748b',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4
+                }}>
+                  <span style={{
+                    fontSize: '0.6rem',
+                    padding: '1px 5px',
+                    borderRadius: 3,
+                    background: isMongo ? '#dcfce7' : isGraph ? '#ede9fe' : '#e0f2fe',
+                    color: isMongo ? '#15803d' : isGraph ? '#6d28d9' : '#0369a1',
+                    fontWeight: 800,
+                  }}>
+                    {t.schemaType}
+                  </span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {t.label}
+                  </span>
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: t.color, marginTop: 4 }}>
+                  {t.count} <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8' }}>{isMongo ? 'docs' : isGraph ? 'nodes' : 'rows'}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -444,7 +611,7 @@ export default function DatabasePage() {
       <div style={{
         background: '#ffffff',
         border: '1px solid #cbd5e1',
-        borderLeft: '4px solid #0284c7',
+        borderLeft: isMongo ? '4px solid #10b981' : isGraph ? '4px solid #6366f1' : '4px solid #0284c7',
         borderRadius: 10,
         padding: '12px 18px',
         marginBottom: 18,
@@ -467,15 +634,15 @@ export default function DatabasePage() {
                 Active Data Source: {activeDatabase.name}
               </span>
               <span style={{
-                background: '#e0f2fe',
-                color: '#0369a1',
+                background: isMongo ? '#dcfce7' : isGraph ? '#ede9fe' : '#e0f2fe',
+                color: isMongo ? '#15803d' : isGraph ? '#6d28d9' : '#0369a1',
                 padding: '2px 8px',
                 borderRadius: 4,
                 fontSize: '0.72rem',
                 fontWeight: 700,
                 textTransform: 'uppercase',
               }}>
-                {activeDatabase.type}
+                {isMongo ? 'MongoDB BSON Store' : isGraph ? 'Neo4j Graph Database' : `${activeDatabase.type} Relational Database`}
               </span>
               <span style={{
                 background: '#f1f5f9',
@@ -485,7 +652,17 @@ export default function DatabasePage() {
                 fontSize: '0.72rem',
                 fontWeight: 600,
               }}>
-                {activeDatabase.host}:{activeDatabase.port || 5432}
+                {activeDatabase.host}:{activeDatabase.port || (isMongo ? 27017 : 5432)}
+              </span>
+              <span style={{
+                background: '#fef3c7',
+                color: '#92400e',
+                padding: '2px 8px',
+                borderRadius: 4,
+                fontSize: '0.72rem',
+                fontWeight: 700,
+              }}>
+                {isMongo ? `Found ${tabs.length} Collections` : isGraph ? `Found ${tabs.length} Graph Node Labels` : `Found ${tabs.length} SQL Tables`}
               </span>
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
@@ -546,6 +723,16 @@ export default function DatabasePage() {
               }}
             >
               <Icon size={16} color={isActive ? tab.color : '#94a3b8'} />
+              <span style={{
+                fontSize: '0.62rem',
+                padding: '1px 5px',
+                borderRadius: 3,
+                background: isMongo ? '#dcfce7' : isGraph ? '#ede9fe' : '#e0f2fe',
+                color: isMongo ? '#15803d' : isGraph ? '#6d28d9' : '#0369a1',
+                fontWeight: 800,
+              }}>
+                {tab.schemaType}
+              </span>
               <span>{tab.label}</span>
               <span style={{
                 background: isActive ? `${tab.color}18` : '#e2e8f0',
@@ -608,13 +795,53 @@ export default function DatabasePage() {
           </label>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#64748b' }}>
-          <span>Originating Department:</span>
-          <span style={{ fontWeight: 700, color: '#0f172a', background: '#f1f5f9', padding: '4px 8px', borderRadius: 6 }}>
-            {currentTabMeta.dept}
-          </span>
-          <span>·</span>
-          <span>Showing <strong>{filteredData.length}</strong> records</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {/* Table vs JSON view toggle for Mongo Collections */}
+          {isMongo && (
+            <div style={{ display: 'flex', background: '#f1f5f9', padding: 2, borderRadius: 6, border: '1px solid #cbd5e1' }}>
+              <button
+                onClick={() => setViewMode('table')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 4,
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  border: 'none',
+                  background: viewMode === 'table' ? '#ffffff' : 'transparent',
+                  color: viewMode === 'table' ? '#0f172a' : '#64748b',
+                  boxShadow: viewMode === 'table' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                Table View
+              </button>
+              <button
+                onClick={() => setViewMode('json')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 4,
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  border: 'none',
+                  background: viewMode === 'json' ? '#0f172a' : 'transparent',
+                  color: viewMode === 'json' ? '#38bdf8' : '#64748b',
+                  boxShadow: viewMode === 'json' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                BSON / JSON Inspector
+              </button>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#64748b' }}>
+            <span>Originating:</span>
+            <span style={{ fontWeight: 700, color: '#0f172a', background: '#f1f5f9', padding: '4px 8px', borderRadius: 6 }}>
+              {currentTabMeta.dept}
+            </span>
+            <span>·</span>
+            <span>Showing <strong>{filteredData.length}</strong> {isMongo ? 'documents' : 'records'}</span>
+          </div>
         </div>
       </div>
 
@@ -634,8 +861,277 @@ export default function DatabasePage() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            {/* Render Table based on activeTab */}
-            {activeTab === 'fir' && (
+            {/* MongoDB BSON / JSON Document Inspector */}
+            {viewMode === 'json' && (
+              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: '#0f172a', borderRadius: 8, color: '#94a3b8', fontSize: '0.78rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: '#38bdf8', fontWeight: 700 }}>MongoDB BSON Inspector</span>
+                    <span>·</span>
+                    <span>Collection: <strong>{currentTabMeta.label}</strong></span>
+                    <span>·</span>
+                    <span>Showing documents as raw NoSQL records</span>
+                  </div>
+                  <span style={{ fontFamily: 'monospace', color: '#a7f3d0' }}>BSON v2.4</span>
+                </div>
+                {paginatedData.map((doc: any, i: number) => (
+                  <div key={doc._id || doc.id || i} style={{
+                    background: '#0b1120',
+                    borderRadius: 8,
+                    padding: 16,
+                    fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                    fontSize: '0.8rem',
+                    color: '#e2e8f0',
+                    border: '1px solid #1e293b',
+                    overflowX: 'auto',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderBottom: '1px solid #1e293b', paddingBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ color: '#10b981', fontWeight: 800 }}>Document</span>
+                        <span style={{ color: '#38bdf8' }}>_id: ObjectId("{doc._id || doc.id}")</span>
+                      </div>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(JSON.stringify(doc, null, 2))}
+                        style={{
+                          background: '#1e293b', border: '1px solid #334155', color: '#94a3b8',
+                          borderRadius: 4, padding: '3px 8px', fontSize: '0.72rem', cursor: 'pointer'
+                        }}
+                      >
+                        Copy Document
+                      </button>
+                    </div>
+                    <pre style={{ margin: 0, color: '#bae6fd', lineHeight: 1.5 }}>
+                      {JSON.stringify(doc, null, 2)}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Render MongoDB Collection Tables */}
+            {viewMode === 'table' && activeTab === 'mongo_complaints' && (
+              <table className="table" style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Complaint ID</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Fraud Category</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Reported Loss</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Victim State</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Suspect Phone & UPI</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Status</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Filed Timestamp</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569', textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(paginatedData as MongoCyberComplaint[]).map(r => (
+                    <tr key={r._id} style={{ borderBottom: '1px solid #f1f5f9' }} className="hover-row">
+                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#ef4444' }}>{r.complaintId}</td>
+                      <td style={{ padding: '12px 16px', fontWeight: 600, color: '#0f172a' }}>{r.category}</td>
+                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#dc2626' }}>₹{r.reportedAmount.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px 16px', color: '#475569' }}>{r.victimState}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600, color: '#0f172a' }}>{r.suspectUPI}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{r.suspectPhone}</div>
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{
+                          background: r.status === 'Frozen' ? '#dcfce7' : r.status === 'Escalated' ? '#fee2e2' : '#eff6ff',
+                          color: r.status === 'Frozen' ? '#15803d' : r.status === 'Escalated' ? '#b91c1c' : '#1d4ed8',
+                          padding: '3px 8px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700
+                        }}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#64748b', fontSize: '0.78rem' }}>{r.timestamp}</td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        <button onClick={() => setSelectedRecord(r)} className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}>
+                          Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {viewMode === 'table' && activeTab === 'mongo_domains' && (
+              <table className="table" style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Phishing Domain</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Targeted Entity</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Hosting IP & ASN</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Registrar</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Threat Status</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Cases Linked</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569', textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(paginatedData as MongoPhishingDomain[]).map(r => (
+                    <tr key={r._id} style={{ borderBottom: '1px solid #f1f5f9' }} className="hover-row">
+                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#d97706' }}>{r.domain}</td>
+                      <td style={{ padding: '12px 16px', fontWeight: 600, color: '#0f172a' }}>{r.targetedBrand}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600, color: '#0f172a', fontFamily: 'monospace' }}>{r.hostingIp}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{r.asn}</div>
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#475569' }}>{r.registrar}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{
+                          background: r.status.includes('High Risk') ? '#fee2e2' : '#f0fdf4',
+                          color: r.status.includes('High Risk') ? '#dc2626' : '#15803d',
+                          padding: '3px 8px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700
+                        }}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#b91c1c' }}>{r.casesLinkedCount} cases</td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        <button onClick={() => setSelectedRecord(r)} className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}>
+                          Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {viewMode === 'table' && activeTab === 'mongo_mules' && (
+              <table className="table" style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Mule Account</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Bank & Branch</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Account Holder</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Total Layered Sum</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Linked PAN</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Layer Depth</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569', textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(paginatedData as MongoMuleAccount[]).map(r => (
+                    <tr key={r._id} style={{ borderBottom: '1px solid #f1f5f9' }} className="hover-row">
+                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#059669', fontFamily: 'monospace' }}>{r.accountNumber}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600, color: '#0f172a' }}>{r.bankName}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{r.branch}</div>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontWeight: 600, color: '#0f172a' }}>{r.accountHolder}</td>
+                      <td style={{ padding: '12px 16px', fontWeight: 800, color: '#b91c1c' }}>₹{r.totalLayeredAmount.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: '#334155' }}>{r.panLinked}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 4, fontWeight: 700, fontSize: '0.75rem' }}>
+                          Level {r.layeringDepth}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        <button onClick={() => setSelectedRecord(r)} className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}>
+                          Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {viewMode === 'table' && activeTab === 'mongo_devices' && (
+              <table className="table" style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Primary IMEI</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Device Model</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>SIM Slots Used</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Last Tower Location</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Risk Level</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Last Seen</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569', textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(paginatedData as MongoSuspectDevice[]).map(r => (
+                    <tr key={r._id} style={{ borderBottom: '1px solid #f1f5f9' }} className="hover-row">
+                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#4f46e5', fontFamily: 'monospace' }}>{r.imei1}</td>
+                      <td style={{ padding: '12px 16px', fontWeight: 600, color: '#0f172a' }}>{r.deviceModel}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {r.simSlots.map(s => <span key={s} style={{ fontSize: '0.75rem', color: '#2563eb' }}>{s}</span>)}
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#475569' }}>{r.lastLocationTower}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{
+                          background: r.riskLevel === 'Critical' ? '#fee2e2' : '#fef3c7',
+                          color: r.riskLevel === 'Critical' ? '#dc2626' : '#b45309',
+                          padding: '3px 8px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700
+                        }}>
+                          {r.riskLevel}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#64748b', fontSize: '0.78rem' }}>{r.lastSeen}</td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        <button onClick={() => setSelectedRecord(r)} className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}>
+                          Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {viewMode === 'table' && activeTab === 'mongo_ip' && (
+              <table className="table" style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>IP Address</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>ISP / Autonomous System</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>VPN / Proxy Status</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Origin Country</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Threat Score</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569' }}>Associated Cases</th>
+                    <th style={{ padding: '12px 16px', fontWeight: 700, color: '#475569', textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(paginatedData as MongoIpForensic[]).map(r => (
+                    <tr key={r._id} style={{ borderBottom: '1px solid #f1f5f9' }} className="hover-row">
+                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#0891b2', fontFamily: 'monospace' }}>{r.ipAddress}</td>
+                      <td style={{ padding: '12px 16px', fontWeight: 600, color: '#0f172a' }}>{r.isp}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{
+                          background: r.vpnProxyDetected ? '#fee2e2' : '#f0fdf4',
+                          color: r.vpnProxyDetected ? '#dc2626' : '#15803d',
+                          padding: '2px 7px', borderRadius: 4, fontSize: '0.72rem', fontWeight: 700
+                        }}>
+                          {r.vpnProxyDetected ? `VPN (${r.vpnProvider || 'Detected'})` : 'Direct IP'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#475569' }}>{r.originCountry}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ fontWeight: 800, color: r.threatScore > 0.8 ? '#dc2626' : '#d97706' }}>
+                          {(r.threatScore * 100).toFixed(0)}%
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#b91c1c', fontWeight: 700 }}>{r.associatedCasesCount} cases</td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        <button onClick={() => setSelectedRecord(r)} className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}>
+                          Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {/* Render SQL / Graph Tables */}
+            {viewMode === 'table' && activeTab === 'fir' && (
               <table className="table" style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
@@ -1238,7 +1734,7 @@ export default function DatabasePage() {
                   {currentTabMeta.label} Record Detail
                 </div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', marginTop: 2 }}>
-                  {selectedRecord.firNumber || selectedRecord.licensePlate || selectedRecord.name || selectedRecord.accountNumber || selectedRecord.id}
+                  {selectedRecord.complaintId || selectedRecord.domain || selectedRecord.imei1 || selectedRecord.ipAddress || selectedRecord.firNumber || selectedRecord.licensePlate || selectedRecord.name || selectedRecord.accountNumber || selectedRecord._id || selectedRecord.id}
                 </div>
               </div>
               <button

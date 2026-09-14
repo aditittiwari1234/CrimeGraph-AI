@@ -18,6 +18,8 @@ export interface DatabaseConnection {
   port?: number;
   databaseName?: string;
   username?: string;
+  password?: string;
+  connectionUri?: string;
   authType: 'password' | 'token' | 'certificate' | 'none';
   department: string;
   classification: 'Restricted' | 'Confidential' | 'Secret' | 'Top Secret';
@@ -33,147 +35,42 @@ export interface DatabaseConnection {
 
 interface DatabaseContextType {
   databases: DatabaseConnection[];
-  activeDatabase: DatabaseConnection;
+  activeDatabase: DatabaseConnection | null;
   activeDatabaseId: string;
   setActiveDatabaseId: (id: string) => void;
   addDatabase: (db: Omit<DatabaseConnection, 'id' | 'createdAt' | 'status' | 'latencyMs' | 'lastPing' | 'recordCount'>) => Promise<DatabaseConnection>;
   removeDatabase: (id: string) => void;
+  clearAllDatabases: () => void;
   testConnection: (dbConfig: Partial<DatabaseConnection>) => Promise<{ success: boolean; latencyMs: number; message: string }>;
   syncDatabase: (id: string) => Promise<void>;
   isAddModalOpen: boolean;
   setIsAddModalOpen: (open: boolean) => void;
 }
 
-const DEFAULT_DATABASES: DatabaseConnection[] = [
-  {
-    id: 'db-neon-cloud-pg',
-    name: 'Neon Cloud PostgreSQL (Live Production)',
-    type: 'postgres',
-    host: 'ep-odd-cake-b37vzncm-pooler.c-4.ap-southeast-1.aws.neon.tech',
-    port: 5432,
-    databaseName: 'neondb',
-    username: 'neondb_owner',
-    authType: 'password',
-    department: 'MHA / NCRB National Intelligence Cloud (Neon Tech AWS)',
-    classification: 'Secret',
-    status: 'connected',
-    latencyMs: 19,
-    lastPing: 'Live Connected',
-    recordCount: 1280,
-    isDefault: true,
-    sslEnabled: true,
-    createdAt: '2026-03-22T00:00:00Z',
-    description: 'Serverless PostgreSQL cluster with connection pooling on AWS ap-southeast-1. Primary live production repository for crime records.',
-  },
-  {
-    id: 'db-ncrb-core',
-    name: 'NCRB National Central Repository',
-    type: 'neo4j',
-    host: 'bolt://graph-core.ncrb.gov.in',
-    port: 7687,
-    databaseName: 'crimegraph_production',
-    username: 'neo4j_admin',
-    authType: 'token',
-    department: 'National Crime Records Bureau (NCRB) HQ',
-    classification: 'Secret',
-    status: 'connected',
-    latencyMs: 16,
-    lastPing: 'Just now',
-    recordCount: 1420,
-    sslEnabled: true,
-    createdAt: '2026-01-01T00:00:00Z',
-    description: 'Primary unified knowledge graph containing FIRs, CDR communications, financial trails, and linked entities across India.',
-  },
-  {
-    id: 'db-cctns-state',
-    name: 'CCTNS State Police Inter-Operable DB',
-    type: 'postgres',
-    host: 'postgres://cctns-node.state.gov.in',
-    port: 5432,
-    databaseName: 'cctns_fir_registry',
-    username: 'cctns_sync_svc',
-    authType: 'certificate',
-    department: 'State Crime Records Bureau (SCRB)',
-    classification: 'Restricted',
-    status: 'connected',
-    latencyMs: 24,
-    lastPing: '2 mins ago',
-    recordCount: 4850,
-    sslEnabled: true,
-    createdAt: '2026-02-15T00:00:00Z',
-    description: 'Direct SQL replica of state police general diaries, crime occurrence reports, and chargesheet archives.',
-  },
-  {
-    id: 'db-telecom-cms',
-    name: 'DoT Central Monitoring System (CMS / LIMS)',
-    type: 'elasticsearch',
-    host: 'https://cms-telecom.dot.gov.in',
-    port: 9200,
-    databaseName: 'telecom_cdr_stream',
-    username: 'lims_investigator',
-    authType: 'token',
-    department: 'Department of Telecommunications',
-    classification: 'Top Secret',
-    status: 'connected',
-    latencyMs: 21,
-    lastPing: '5 mins ago',
-    recordCount: 18450,
-    sslEnabled: true,
-    createdAt: '2026-03-01T00:00:00Z',
-    description: 'High-throughput cellular call detail records, cell tower geometry logs, and mobile IMEI tracking index.',
-  },
-  {
-    id: 'db-fiu-aml',
-    name: 'FIU-IND Anti-Money Laundering Lakehouse',
-    type: 'oracle',
-    host: 'jdbc:oracle:thin:@fiu-lakehouse.finmin.gov.in',
-    port: 1521,
-    databaseName: 'FIN_INTEL_DW',
-    username: 'fiu_analyst',
-    authType: 'password',
-    department: 'Financial Intelligence Unit - India',
-    classification: 'Top Secret',
-    status: 'connected',
-    latencyMs: 34,
-    lastPing: '8 mins ago',
-    recordCount: 6200,
-    sslEnabled: true,
-    createdAt: '2026-03-10T00:00:00Z',
-    description: 'Suspicious Transaction Reports (STRs), Cash Transaction Reports (CTRs), and cross-border Hawala banking trails.',
-  },
-  {
-    id: 'db-vahan-transport',
-    name: 'MoRTH National VAHAN & SARATHI',
-    type: 'mysql',
-    host: 'vahan-cluster.morth.nic.in',
-    port: 3306,
-    databaseName: 'vahan_national_rc',
-    username: 'vahan_read_agent',
-    authType: 'password',
-    department: 'Ministry of Road Transport & Highways',
-    classification: 'Confidential',
-    status: 'connected',
-    latencyMs: 29,
-    lastPing: '12 mins ago',
-    recordCount: 8900,
-    sslEnabled: true,
-    createdAt: '2026-03-20T00:00:00Z',
-    description: 'National vehicle registration database, chassis/engine match verification, and automated toll ANPR passage logs.',
-  },
-];
+const DEFAULT_DATABASES: DatabaseConnection[] = [];
 
-const STORAGE_KEY = 'crimegraph_databases_v2';
-const ACTIVE_DB_KEY = 'crimegraph_active_db_id_v2';
+const STORAGE_KEY = 'crimegraph_databases_v5';
+const ACTIVE_DB_KEY = 'crimegraph_active_db_id_v5';
 
 const DatabaseContext = createContext<DatabaseContextType | null>(null);
 
 export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   const [databases, setDatabases] = useState<DatabaseConnection[]>(() => {
     try {
+      // Clear legacy mock database cache
+      localStorage.removeItem('crimegraph_databases_v1');
+      localStorage.removeItem('crimegraph_databases_v2');
+      localStorage.removeItem('crimegraph_databases_v3');
+      localStorage.removeItem('crimegraph_databases_v4');
+      localStorage.removeItem('crimegraph_active_db_id_v1');
+      localStorage.removeItem('crimegraph_active_db_id_v2');
+      localStorage.removeItem('crimegraph_active_db_id_v3');
+      localStorage.removeItem('crimegraph_active_db_id_v4');
+      
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {
       // fallback
@@ -188,7 +85,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // fallback
     }
-    return 'db-neon-cloud-pg';
+    return '';
   });
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -211,7 +108,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const activeDatabase = databases.find(d => d.id === activeDatabaseId) || databases[0] || DEFAULT_DATABASES[0];
+  const activeDatabase = databases.find(d => d.id === activeDatabaseId) || (databases.length > 0 ? databases[0] : null);
 
   const testConnection = useCallback(async (dbConfig: Partial<DatabaseConnection>): Promise<{ success: boolean; latencyMs: number; message: string }> => {
     // Simulated realistic network handshake test
@@ -238,27 +135,52 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       ...dbData,
       id: `db-custom-${Date.now()}`,
       status: 'connected',
-      latencyMs: Math.floor(Math.random() * 20) + 14,
+      latencyMs: Math.floor(Math.random() * 10) + 12,
       lastPing: 'Just now',
-      recordCount: Math.floor(Math.random() * 800) + 120,
+      recordCount: 0,
       createdAt: new Date().toISOString(),
     };
 
     setDatabases(prev => [newDb, ...prev]);
     setActiveDatabaseId(newDb.id);
+
+    // Fetch real live row count from database
+    try {
+      const uri = newDb.connectionUri || (newDb.host.startsWith('postgres') ? newDb.host : '');
+      const uriParam = uri ? `?uri=${encodeURIComponent(uri)}` : '';
+      fetch(`/api/database/live-data${uriParam}`)
+        .then(res => res.json())
+        .then(json => {
+          if (json.success && json.counts) {
+            const total = Object.values(json.counts as Record<string, number>).reduce((a, b) => a + b, 0);
+            setDatabases(prev => prev.map(d => d.id === newDb.id ? { ...d, recordCount: total } : d));
+          }
+        })
+        .catch(() => {});
+    } catch {}
+
     return newDb;
   }, [setActiveDatabaseId]);
 
   const removeDatabase = useCallback((id: string) => {
     setDatabases(prev => {
       const filtered = prev.filter(d => d.id !== id);
-      if (filtered.length === 0) return DEFAULT_DATABASES;
+      const nextActive = filtered.length > 0 ? filtered[0].id : '';
+      if (activeDatabaseId === id) {
+        setActiveDatabaseId(nextActive);
+      }
       return filtered;
     });
-    if (activeDatabaseId === id) {
-      setActiveDatabaseId(DEFAULT_DATABASES[0].id);
-    }
   }, [activeDatabaseId, setActiveDatabaseId]);
+
+  const clearAllDatabases = useCallback(() => {
+    setDatabases([]);
+    setActiveDatabaseId('');
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(ACTIVE_DB_KEY);
+    } catch {}
+  }, [setActiveDatabaseId]);
 
   const syncDatabase = useCallback(async (id: string) => {
     setDatabases(prev => prev.map(db => {
@@ -271,36 +193,36 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       return db;
     }));
 
-    if (id === 'db-neon-cloud-pg') {
-      try {
-        const start = performance.now();
-        const res = await fetch('/api/database/live-data');
-        const elapsed = Math.round(performance.now() - start);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.counts) {
-            const total = Object.values(json.counts as Record<string, number>).reduce((a, b) => a + b, 0);
-            setDatabases(prev => prev.map(db => {
-              if (db.id === id) {
-                return {
-                  ...db,
-                  status: 'connected',
-                  lastPing: 'Live Connected (Just now)',
-                  latencyMs: elapsed > 0 ? elapsed : 19,
-                  recordCount: total > 0 ? total : 51,
-                };
-              }
-              return db;
-            }));
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('Neon sync live query:', err);
-      }
-    }
+    try {
+      const target = databases.find(d => d.id === id);
+      const uri = target?.connectionUri || (target?.host.startsWith('postgres') ? target.host : '');
+      const uriParam = uri ? `?uri=${encodeURIComponent(uri)}` : '';
+      const start = performance.now();
+      const res = await fetch(`/api/database/live-data${uriParam}`);
+      const elapsed = Math.round(performance.now() - start);
 
-    await new Promise(r => setTimeout(r, 800));
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.counts) {
+          const total = Object.values(json.counts as Record<string, number>).reduce((a, b) => a + b, 0);
+          setDatabases(prev => prev.map(db => {
+            if (db.id === id) {
+              return {
+                ...db,
+                status: 'connected',
+                lastPing: 'Live Connected (Just now)',
+                latencyMs: elapsed > 0 ? elapsed : 18,
+                recordCount: total,
+              };
+            }
+            return db;
+          }));
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Sync live query error:', err);
+    }
 
     setDatabases(prev => prev.map(db => {
       if (db.id === id) {
@@ -308,13 +230,11 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
           ...db,
           status: 'connected',
           lastPing: 'Just now',
-          latencyMs: Math.floor(Math.random() * 15) + 14,
-          recordCount: db.recordCount + Math.floor(Math.random() * 8) + 1,
         };
       }
       return db;
     }));
-  }, []);
+  }, [databases]);
 
   return (
     <DatabaseContext.Provider value={{
@@ -324,6 +244,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       setActiveDatabaseId,
       addDatabase,
       removeDatabase,
+      clearAllDatabases,
       testConnection,
       syncDatabase,
       isAddModalOpen,

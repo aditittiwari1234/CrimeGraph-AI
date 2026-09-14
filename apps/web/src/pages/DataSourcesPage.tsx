@@ -1,12 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Share2, Database, RefreshCw, CheckCircle2, AlertTriangle,
   Upload, FileText, Phone, CreditCard, Truck, Building2,
   Lock, ArrowRight, Activity, Globe, Shield, ExternalLink,
-  Plus, Check, X, Server
+  Plus, Check, X, Server, Trash2
 } from 'lucide-react';
-import { ENTITY_COUNTS } from '../data/dataset';
 import { useDatabases } from '../contexts/DatabaseContext';
 
 interface DataSource {
@@ -28,176 +27,51 @@ interface DataSource {
 
 export default function DataSourcesPage() {
   const navigate = useNavigate();
-  const { setIsAddModalOpen, setActiveDatabaseId, syncDatabase } = useDatabases();
+  const { databases, setIsAddModalOpen, setActiveDatabaseId, syncDatabase, removeDatabase, clearAllDatabases } = useDatabases();
 
   const handleBrowseRecords = (srcId: string) => {
-    switch (srcId) {
-      case 'neon-pg':
-        setActiveDatabaseId('db-neon-cloud-pg');
-        navigate('/database?tab=fir');
-        break;
-      case 'ncrb-core':
-        setActiveDatabaseId('db-ncrb-core');
-        navigate('/database');
-        break;
-      case 'cctns':
-        setActiveDatabaseId('db-cctns-state');
-        navigate('/database?tab=fir');
-        break;
-      case 'telecom':
-        setActiveDatabaseId('db-telecom-cms');
-        navigate('/database?tab=cdr');
-        break;
-      case 'fiu':
-        setActiveDatabaseId('db-fiu-aml');
-        navigate('/database?tab=financial');
-        break;
-      case 'vahan':
-        setActiveDatabaseId('db-vahan-transport');
-        navigate('/database?tab=vehicles');
-        break;
-      case 'mca':
-        setActiveDatabaseId('db-neon-cloud-pg');
-        navigate('/database?tab=organisations');
-        break;
-      case 'uidai':
-        setActiveDatabaseId('db-ncrb-core');
-        navigate('/database?tab=persons');
-        break;
-      default:
-        navigate('/database');
+    setActiveDatabaseId(srcId);
+    navigate('/database');
+  };
+
+  const handleDeleteSource = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (confirm('Are you sure you want to disconnect this data source?')) {
+      removeDatabase(id);
     }
   };
-  const [sources, setSources] = useState<DataSource[]>([
-    {
-      id: 'neon-pg',
-      name: 'Neon Cloud PostgreSQL (Primary Relational Core)',
-      department: 'NCRB National Intelligence Cloud',
-      ministry: 'MHA / Serverless AWS Cluster (ap-southeast-1)',
-      icon: Database,
-      color: '#0284c7',
-      recordsCount: 1280,
-      recordType: 'Incident & Case Schema (SQL)',
-      status: 'connected',
-      lastSync: 'Live Connected',
-      latencyMs: 19,
-      protocol: 'PostgreSQL v16 / Pooler Port 5432',
-      authMethod: 'SCRAM-SHA-256 + SSL Required',
-      description: 'Production cloud PostgreSQL cluster hosted on Neon serverless AWS. Direct connection pooler endpoint for fast multi-tenant queries.',
-    },
-    {
-      id: 'ncrb-core',
-      name: 'NCRB National Central Repository',
-      department: 'National Crime Records Bureau (NCRB) HQ',
-      ministry: 'MHA / Consolidated Multi-Agency Intelligence',
-      icon: Database,
-      color: '#4f46e5',
-      recordsCount: 1420,
-      recordType: 'Unified Knowledge Graph Master',
-      status: 'connected',
-      lastSync: 'Live Connected',
-      latencyMs: 16,
-      protocol: 'Neo4j Bolt (bolt://graph-core.ncrb.gov.in:7687)',
-      authMethod: 'OAuth2 Token / RBAC Classified',
-      description: 'NCRB Central Repository: Consolidated National Multi-Agency Intelligence Master knowledge graph linking FIRs, CDR communications, financial trails, and linked entities across India.',
-    },
-    {
-      id: 'cctns',
-      name: 'CCTNS National Core',
-      department: 'Crime & Criminal Tracking Network & Systems',
-      ministry: 'Ministry of Home Affairs (MHA) / NCRB',
-      icon: FileText,
-      color: '#dc2626',
-      recordsCount: ENTITY_COUNTS.firs,
-      recordType: 'FIRs & Chargesheets',
-      status: 'connected',
-      lastSync: '2 minutes ago',
-      latencyMs: 24,
-      protocol: 'HTTPS REST / OAS 3.0',
-      authMethod: 'mTLS + NIC OAuth2',
-      description: 'Nationwide integration across 16,000+ police stations for FIR registration, general diaries, and court charge-sheets.',
-    },
-    {
-      id: 'telecom',
-      name: 'DoT Telecom Gateway (CMS / LIMS)',
-      department: 'Central Monitoring System & Telecom Data',
-      ministry: 'Department of Telecommunications / TRAI',
-      icon: Phone,
-      color: '#16a34a',
-      recordsCount: ENTITY_COUNTS.cdrRecords,
-      recordType: 'CDR & Cell Tower Logs',
-      status: 'connected',
-      lastSync: '4 minutes ago',
-      latencyMs: 18,
-      protocol: 'Secure SFTP / Kafka Stream',
-      authMethod: 'Gov-VPN + 4096-bit RSA',
-      description: 'Automated retrieval of Call Detail Records, tower triangulation feeds, IMEI change alerts, and subscriber identity registries.',
-    },
-    {
-      id: 'fiu',
-      name: 'FIU-IND Financial Gateway',
-      department: 'Financial Intelligence Unit - India',
-      ministry: 'Ministry of Finance / Enforcement Directorate',
-      icon: CreditCard,
-      color: '#ca8a04',
-      recordsCount: ENTITY_COUNTS.transactions,
-      recordType: 'Suspicious & Cash Txns',
-      status: 'connected',
-      lastSync: '7 minutes ago',
-      latencyMs: 31,
-      protocol: 'ISO 20022 XML / API Gateway',
-      authMethod: 'FIU PKI Hardware Token',
-      description: 'Live ingestion of Suspicious Transaction Reports (STRs), Cash Transaction Reports (CTRs), and cross-border remittances.',
-    },
-    {
-      id: 'vahan',
-      name: 'MoRTH VAHAN & SARATHI',
-      department: 'National Vehicle & Driving Licence Register',
-      ministry: 'Ministry of Road Transport & Highways',
-      icon: Truck,
-      color: '#ea580c',
-      recordsCount: ENTITY_COUNTS.vehicles,
-      recordType: 'RC, Chassis & ANPR Logs',
-      status: 'connected',
-      lastSync: '12 minutes ago',
-      latencyMs: 42,
-      protocol: 'NIC e-Governance API',
-      authMethod: 'API Token + IP Whitelist',
-      description: 'Vehicle registration details, transfer history, automated toll ANPR passage logs, and driving licence verification.',
-    },
-    {
-      id: 'mca',
-      name: 'MCA-21 & GSTN Data Hub',
-      department: 'Ministry of Corporate Affairs & GST Network',
-      ministry: 'MCA / Goods & Services Tax Network',
-      icon: Building2,
-      color: '#7c3aed',
-      recordsCount: ENTITY_COUNTS.organisations,
-      recordType: 'Company Filings & Directorships',
-      status: 'connected',
-      lastSync: '18 minutes ago',
-      latencyMs: 37,
-      protocol: 'OData REST Endpoint',
-      authMethod: 'Corporate Affairs Token',
-      description: 'Corporate registry (CIN), registered office addresses, shared directorships (DIN), shell company alerts, and GST invoice trails.',
-    },
-    {
-      id: 'uidai',
-      name: 'Immigration & UIDAI Gateway',
-      department: 'Bureau of Immigration & Aadhaar Tokenization',
-      ministry: 'MHA / MeitY (UIDAI)',
-      icon: Globe,
-      color: '#0891b2',
-      recordsCount: ENTITY_COUNTS.persons,
-      recordType: 'Identity & Travel Logs',
-      status: 'connected',
-      lastSync: '25 minutes ago',
-      latencyMs: 19,
-      protocol: 'Zero-Knowledge Token API',
-      authMethod: 'UIDAI Sub-AUA Token',
-      description: 'Tokenized identity verification without exposing clear Aadhaar numbers, international travel manifests, and passport status.',
-    },
-  ]);
+
+  // Derive all data sources directly from the connected databases
+  const allSources = useMemo<DataSource[]>(() => {
+    return databases.map(d => {
+      const isMongo = d.type === 'mongodb';
+      const isGraph = d.type === 'neo4j';
+      const isElastic = d.type === 'elasticsearch';
+      const isOracle = d.type === 'oracle';
+      const isMysql = d.type === 'mysql';
+
+      const icon = isMongo ? Shield : isElastic ? Activity : isOracle ? CreditCard : isGraph ? Database : isMysql ? Truck : Database;
+      const color = isMongo ? '#10b981' : isGraph ? '#4f46e5' : isElastic ? '#047857' : isOracle ? '#b91c1c' : '#0284c7';
+      const recordType = isMongo ? 'Document Collections (BSON)' : isGraph ? 'Graph Nodes & Edges' : 'Relational Tables (SQL)';
+
+      return {
+        id: d.id,
+        name: d.name,
+        department: d.department,
+        ministry: `${d.type.toUpperCase()} / ${d.classification} Security Clearance`,
+        icon,
+        color,
+        recordsCount: d.recordCount || 0,
+        recordType,
+        status: d.status as any,
+        lastSync: d.lastPing || 'Just now',
+        latencyMs: d.latencyMs || 18,
+        protocol: `${d.type.toUpperCase()} / Port ${d.port || (isMongo ? 27017 : isGraph ? 7687 : 5432)}`,
+        authMethod: d.authType === 'password' ? 'SCRAM-SHA-256' : `${d.authType.toUpperCase()} Auth`,
+        description: d.description || `Connected ${d.type.toUpperCase()} database at ${d.host}. Ready for live querying in CrimeGraph AI.`,
+      };
+    });
+  }, [databases]);
 
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<{ name: string; count: number; latency: number; dbId: string } | null>(null);
@@ -209,62 +83,17 @@ export default function DataSourcesPage() {
   // Trigger manual sync connected to central database context
   const handleSync = async (id: string) => {
     setSyncingId(id);
-    const dbMap: Record<string, string> = {
-      'neon-pg': 'db-neon-cloud-pg',
-      'ncrb-core': 'db-ncrb-core',
-      'cctns': 'db-cctns-state',
-      'telecom': 'db-telecom-cms',
-      'fiu': 'db-fiu-aml',
-      'vahan': 'db-vahan-transport',
-      'mca': 'db-neon-cloud-pg',
-      'uidai': 'db-ncrb-core',
-    };
-
-    const targetDbId = dbMap[id] || 'db-neon-cloud-pg';
-    let newCount = 0;
-    let latency = Math.floor(Math.random() * 15) + 14;
-
-    if (id === 'neon-pg') {
-      try {
-        const res = await fetch('/api/database/live-data');
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.counts) {
-            newCount = Object.values(json.counts as Record<string, number>).reduce((a, b) => a + b, 0);
-            latency = 19;
-          }
-        }
-      } catch (err) {
-        console.warn('Neon sync fetch err:', err);
-      }
-    }
-
-    await syncDatabase(targetDbId);
-    setActiveDatabaseId(targetDbId);
-
-    const targetSrc = sources.find(s => s.id === id);
-    const countToSet = newCount > 0 ? newCount : (targetSrc ? targetSrc.recordsCount + Math.floor(Math.random() * 8) + 1 : 1280);
-
-    setSources(prev => prev.map(s => {
-      if (s.id === id) {
-        return {
-          ...s,
-          recordsCount: countToSet,
-          lastSync: 'Just now (Synchronized)',
-          latencyMs: latency,
-          status: 'connected',
-        };
-      }
-      return s;
-    }));
-
+    await syncDatabase(id);
+    const target = databases.find(d => d.id === id);
     setSyncingId(null);
-    setSyncNotice({
-      name: targetSrc ? targetSrc.name : 'Data Source',
-      count: countToSet,
-      latency,
-      dbId: targetDbId,
-    });
+    if (target) {
+      setSyncNotice({
+        name: target.name,
+        count: target.recordCount,
+        latency: target.latencyMs,
+        dbId: target.id,
+      });
+    }
   };
 
   // Handle Import
@@ -327,12 +156,27 @@ export default function DataSourcesPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {databases.length > 0 && (
+              <button
+                onClick={() => {
+                  if (confirm('Are you sure you want to disconnect and delete all data sources?')) {
+                    clearAllDatabases();
+                  }
+                }}
+                className="btn btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#dc2626', borderColor: '#fecaca' }}
+                title="Disconnect all data sources"
+              >
+                <Trash2 size={15} />
+                Clear All
+              </button>
+            )}
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="btn btn-secondary"
+              className="btn btn-primary"
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
             >
-              <Plus size={15} color="#2563eb" />
+              <Plus size={15} />
               Connect Database
             </button>
             <button
@@ -345,7 +189,7 @@ export default function DataSourcesPage() {
             </button>
             <button
               onClick={() => setShowImportModal(true)}
-              className="btn btn-primary"
+              className="btn btn-secondary"
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
             >
               <Upload size={15} />
@@ -369,7 +213,7 @@ export default function DataSourcesPage() {
             </div>
             <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Active Gateways</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>{sources.length} / {sources.length} Connected</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>{allSources.length} / {allSources.length} Connected</div>
             </div>
           </div>
 
@@ -400,7 +244,7 @@ export default function DataSourcesPage() {
             <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Total Ingested Records</div>
               <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
-                {sources.reduce((acc, s) => acc + s.recordsCount, 0).toLocaleString()}
+                {allSources.reduce((acc, s) => acc + s.recordsCount, 0).toLocaleString()}
               </div>
             </div>
           </div>
@@ -470,126 +314,177 @@ export default function DataSourcesPage() {
         </div>
       )}
 
-      {/* Grid of Departmental Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-        gap: 20,
-      }}>
-        {sources.map(src => {
-          const Icon = src.icon;
-          const isSyncing = syncingId === src.id;
+      {/* Grid or Empty State */}
+      {allSources.length === 0 ? (
+        <div style={{
+          background: '#ffffff',
+          border: '2px dashed #cbd5e1',
+          borderRadius: 16,
+          padding: '64px 32px',
+          textAlign: 'center',
+          maxWidth: 620,
+          margin: '30px auto',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+        }}>
+          <div style={{
+            width: 72,
+            height: 72,
+            borderRadius: '50%',
+            background: '#eff6ff',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 20px'
+          }}>
+            <Database size={36} />
+          </div>
+          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>
+            No Data Sources Connected
+          </h3>
+          <p style={{ color: '#64748b', fontSize: '0.92rem', lineHeight: 1.6, marginBottom: 24 }}>
+            All default data sources have been removed. Add or connect your database manually (PostgreSQL, MongoDB, MySQL, Neo4j, etc.) to start ingesting records and analyzing criminal networks.
+          </p>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="btn btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', fontSize: '0.95rem' }}
+          >
+            <Plus size={18} />
+            <span>Connect Database Manually</span>
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+          gap: 20,
+        }}>
+          {allSources.map(src => {
+            const Icon = src.icon;
+            const isSyncing = syncingId === src.id;
 
-          return (
-            <div
-              key={src.id}
-              style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: 12,
-                padding: '22px 24px',
-                display: 'flex',
-                flexDirection: 'column',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                transition: 'box-shadow 150ms ease, border-color 150ms ease',
-              }}
-            >
-              {/* Card Top */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{
-                    width: 46, height: 46, borderRadius: 10,
-                    background: `${src.color}15`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: `1px solid ${src.color}30`,
-                  }}>
-                    <Icon size={24} color={src.color} />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: '0 0 2px' }}>
-                      {src.name}
-                    </h3>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>
-                      {src.ministry}
+            return (
+              <div
+                key={src.id}
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 12,
+                  padding: '22px 24px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  transition: 'box-shadow 150ms ease, border-color 150ms ease',
+                }}
+              >
+                {/* Card Top */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div style={{
+                      width: 46, height: 46, borderRadius: 10,
+                      background: `${src.color}15`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: `1px solid ${src.color}30`,
+                    }}>
+                      <Icon size={24} color={src.color} />
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: '0 0 2px' }}>
+                        {src.name}
+                      </h3>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>
+                        {src.ministry}
+                      </div>
                     </div>
                   </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{
+                      width: 8, height: 8, borderRadius: '50%',
+                      background: '#16a34a',
+                      boxShadow: '0 0 0 3px rgba(22, 163, 74, 0.2)',
+                    }} />
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#16a34a', textTransform: 'uppercase' }}>
+                      {src.status}
+                    </span>
+                  </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: '#16a34a',
-                    boxShadow: '0 0 0 3px rgba(22, 163, 74, 0.2)',
-                  }} />
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#16a34a', textTransform: 'uppercase' }}>
-                    {src.status}
-                  </span>
+                {/* Description */}
+                <p style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.5, margin: '0 0 16px', flex: 1 }}>
+                  {src.description}
+                </p>
+
+                {/* Data Specifications Grid */}
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #f1f5f9',
+                  borderRadius: 8,
+                  padding: '12px 16px',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, 1fr)',
+                  gap: 10,
+                  marginBottom: 16,
+                  fontSize: '0.8rem'
+                }}>
+                  <div>
+                    <div style={{ color: '#64748b', fontSize: '0.72rem', fontWeight: 600 }}>Record Type</div>
+                    <div style={{ fontWeight: 700, color: '#0f172a', marginTop: 1 }}>{src.recordType}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#64748b', fontSize: '0.72rem', fontWeight: 600 }}>Active Ingested</div>
+                    <div style={{ fontWeight: 800, color: src.color, marginTop: 1 }}>{src.recordsCount.toLocaleString()} items</div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#64748b', fontSize: '0.72rem', fontWeight: 600 }}>Protocol / Auth</div>
+                    <div style={{ fontWeight: 600, color: '#334155', marginTop: 1 }}>{src.protocol}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#64748b', fontSize: '0.72rem', fontWeight: 600 }}>Latency & Sync</div>
+                    <div style={{ fontWeight: 600, color: '#334155', marginTop: 1 }}>{src.latencyMs} ms · {src.lastSync}</div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      onClick={() => handleBrowseRecords(src.id)}
+                      className="btn btn-secondary"
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '6px 12px' }}
+                    >
+                      <Database size={14} />
+                      Browse Records
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteSource(e, src.id)}
+                      className="btn btn-secondary"
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem', padding: '6px 10px', color: '#dc2626', borderColor: '#fecaca' }}
+                      title="Disconnect data source"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+
+                  <button
+                    disabled={isSyncing}
+                    onClick={() => handleSync(src.id)}
+                    className="btn btn-primary"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '6px 14px',
+                      opacity: isSyncing ? 0.7 : 1,
+                    }}
+                  >
+                    <RefreshCw size={14} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                    <span>{isSyncing ? 'Syncing...' : 'Sync Gateway'}</span>
+                  </button>
                 </div>
               </div>
-
-              {/* Description */}
-              <p style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.5, margin: '0 0 16px', flex: 1 }}>
-                {src.description}
-              </p>
-
-              {/* Data Specifications Grid */}
-              <div style={{
-                background: '#f8fafc',
-                border: '1px solid #f1f5f9',
-                borderRadius: 8,
-                padding: '12px 16px',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: 10,
-                marginBottom: 16,
-                fontSize: '0.8rem'
-              }}>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: '0.72rem', fontWeight: 600 }}>Record Type</div>
-                  <div style={{ fontWeight: 700, color: '#0f172a', marginTop: 1 }}>{src.recordType}</div>
-                </div>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: '0.72rem', fontWeight: 600 }}>Active Ingested</div>
-                  <div style={{ fontWeight: 800, color: src.color, marginTop: 1 }}>{src.recordsCount.toLocaleString()} items</div>
-                </div>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: '0.72rem', fontWeight: 600 }}>Protocol / Auth</div>
-                  <div style={{ fontWeight: 600, color: '#334155', marginTop: 1 }}>{src.protocol}</div>
-                </div>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: '0.72rem', fontWeight: 600 }}>Latency & Sync</div>
-                  <div style={{ fontWeight: 600, color: '#334155', marginTop: 1 }}>{src.latencyMs} ms · {src.lastSync}</div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <button
-                  onClick={() => handleBrowseRecords(src.id)}
-                  className="btn btn-secondary"
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '6px 12px' }}
-                >
-                  <Database size={14} />
-                  Browse Records
-                </button>
-
-                <button
-                  disabled={isSyncing}
-                  onClick={() => handleSync(src.id)}
-                  className="btn btn-primary"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '6px 14px',
-                    opacity: isSyncing ? 0.7 : 1,
-                  }}
-                >
-                  <RefreshCw size={14} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
-                  <span>{isSyncing ? 'Syncing...' : 'Sync Gateway'}</span>
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Manual Dataset Ingestion Modal */}
       {showImportModal && (

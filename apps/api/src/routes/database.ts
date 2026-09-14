@@ -6,9 +6,36 @@ const router = Router();
 
 // GET /api/database/live-data
 // Returns live rows from all tables in the connected Neon PostgreSQL database
-router.get('/live-data', async (_req: Request, res: Response): Promise<void> => {
+router.get('/live-data', async (req: Request, res: Response): Promise<void> => {
+  const customUri = (req.query.uri as string) || (req.headers['x-database-uri'] as string);
+  let client: any = null;
+  let isDedicated = false;
+
   try {
-    const client = await (await import('../db/postgres')).getPool().connect();
+    if (customUri && (customUri.startsWith('postgres://') || customUri.startsWith('postgresql://'))) {
+      const { Client } = await import('pg');
+      client = new Client({
+        connectionString: customUri,
+        ssl: { rejectUnauthorized: false },
+      });
+      await client.connect();
+      isDedicated = true;
+    } else {
+      client = await (await import('../db/postgres')).getPool().connect();
+    }
+
+    const safeQuery = async (sql: string) => {
+      try {
+        return await client.query(sql);
+      } catch {
+        return { rows: [] as any[] };
+      }
+    };
+
+    // Discover actual tables in the connected database
+    const schemaRes = await safeQuery("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
+    const discoveredTables: string[] = schemaRes.rows.map((r: any) => r.table_name);
+
     let firsRes = { rows: [] as any[] };
     let personsRes = { rows: [] as any[] };
     let vehiclesRes = { rows: [] as any[] };
@@ -20,149 +47,162 @@ router.get('/live-data', async (_req: Request, res: Response): Promise<void> => 
     let locationsRes = { rows: [] as any[] };
     let alertsRes = { rows: [] as any[] };
 
-    try {
-      firsRes = await client.query('SELECT * FROM fir_records ORDER BY created_at DESC LIMIT 100');
-      personsRes = await client.query('SELECT * FROM persons ORDER BY risk_score DESC LIMIT 100');
-      vehiclesRes = await client.query('SELECT * FROM vehicles ORDER BY year DESC LIMIT 100');
-      orgsRes = await client.query('SELECT * FROM organisations ORDER BY name ASC LIMIT 100');
-      txnsRes = await client.query('SELECT * FROM financial_transactions ORDER BY txn_date DESC LIMIT 100');
-      cdrsRes = await client.query('SELECT * FROM cdr_records ORDER BY timestamp DESC LIMIT 100');
-      accountsRes = await client.query('SELECT * FROM bank_accounts ORDER BY id ASC LIMIT 100');
-      surveillanceRes = await client.query('SELECT * FROM surveillance_reports ORDER BY report_date DESC LIMIT 100');
-      locationsRes = await client.query('SELECT * FROM locations ORDER BY name ASC LIMIT 100');
-      alertsRes = await client.query('SELECT * FROM alerts ORDER BY created_at DESC LIMIT 100');
-    } finally {
-      client.release();
+    if (discoveredTables.length === 0 || discoveredTables.includes('fir_records')) {
+      firsRes = await safeQuery('SELECT * FROM fir_records ORDER BY created_at DESC LIMIT 100');
+    }
+    if (discoveredTables.length === 0 || discoveredTables.includes('persons')) {
+      personsRes = await safeQuery('SELECT * FROM persons ORDER BY risk_score DESC LIMIT 100');
+    }
+    if (discoveredTables.length === 0 || discoveredTables.includes('vehicles')) {
+      vehiclesRes = await safeQuery('SELECT * FROM vehicles ORDER BY year DESC LIMIT 100');
+    }
+    if (discoveredTables.length === 0 || discoveredTables.includes('organisations')) {
+      orgsRes = await safeQuery('SELECT * FROM organisations ORDER BY name ASC LIMIT 100');
+    }
+    if (discoveredTables.length === 0 || discoveredTables.includes('financial_transactions')) {
+      txnsRes = await safeQuery('SELECT * FROM financial_transactions ORDER BY txn_date DESC LIMIT 100');
+    }
+    if (discoveredTables.length === 0 || discoveredTables.includes('cdr_records')) {
+      cdrsRes = await safeQuery('SELECT * FROM cdr_records ORDER BY timestamp DESC LIMIT 100');
+    }
+    if (discoveredTables.length === 0 || discoveredTables.includes('bank_accounts')) {
+      accountsRes = await safeQuery('SELECT * FROM bank_accounts ORDER BY id ASC LIMIT 100');
+    }
+    if (discoveredTables.length === 0 || discoveredTables.includes('surveillance_reports')) {
+      surveillanceRes = await safeQuery('SELECT * FROM surveillance_reports ORDER BY report_date DESC LIMIT 100');
+    }
+    if (discoveredTables.length === 0 || discoveredTables.includes('locations')) {
+      locationsRes = await safeQuery('SELECT * FROM locations ORDER BY name ASC LIMIT 100');
+    }
+    if (discoveredTables.length === 0 || discoveredTables.includes('alerts')) {
+      alertsRes = await safeQuery('SELECT * FROM alerts ORDER BY created_at DESC LIMIT 100');
     }
 
     // Format rows to match frontend interface format
     const firs = firsRes.rows.map((r: any) => ({
       id: r.id,
-      firNumber: r.fir_number,
-      station: r.station,
-      district: r.district,
-      state: r.state,
-      filedDate: r.filed_date,
-      complainant: r.complainant,
+      firNumber: r.fir_number || r.id,
+      station: r.station || '',
+      district: r.district || '',
+      state: r.state || '',
+      filedDate: r.filed_date || r.created_at || '',
+      complainant: r.complainant || '',
       accused: r.accused || [],
       sections: r.sections || [],
       priority: r.priority || 'Normal',
-      description: r.description,
-      createdAt: r.created_at,
+      description: r.description || '',
+      createdAt: r.created_at || '',
     }));
 
     const persons = personsRes.rows.map((r: any) => ({
       id: r.id,
-      name: r.name,
+      name: r.name || r.full_name || '',
       alias: r.alias || '',
-      age: r.age,
-      gender: r.gender,
-      aadharMasked: r.aadhar_masked,
-      city: r.city,
-      state: r.state,
-      occupation: r.occupation,
+      age: r.age || 0,
+      gender: r.gender || '',
+      aadharMasked: r.aadhar_masked || '',
+      city: r.city || '',
+      state: r.state || '',
+      occupation: r.occupation || '',
       communityId: r.community_id || 'C1',
       riskScore: parseFloat(r.risk_score) || 0.5,
-      status: r.status,
-      flaggedReason: r.flagged_reason,
+      status: r.status || 'Active',
+      flaggedReason: r.flagged_reason || '',
     }));
 
     const vehicles = vehiclesRes.rows.map((r: any) => ({
       id: r.id,
-      licensePlate: r.license_plate,
-      make: r.make,
-      model: r.model,
-      color: r.color,
-      year: r.year,
-      registeredOwner: r.registered_owner,
-      registrationState: r.registration_state,
-      status: r.status,
+      licensePlate: r.license_plate || r.plate || '',
+      make: r.make || '',
+      model: r.model || '',
+      color: r.color || '',
+      year: r.year || 2020,
+      registeredOwner: r.registered_owner || '',
+      registrationState: r.registration_state || '',
+      status: r.status || 'Registered',
       flagged: Boolean(r.flagged),
     }));
 
     const organisations = orgsRes.rows.map((r: any) => ({
       id: r.id,
-      name: r.name,
-      orgType: r.org_type,
-      cin: r.cin,
-      gstin: r.gstin,
-      director: r.director,
-      city: r.city,
-      state: r.state,
-      turnover: r.turnover,
-      businessNature: r.business_nature,
+      name: r.name || '',
+      orgType: r.org_type || '',
+      cin: r.cin || '',
+      gstin: r.gstin || '',
+      director: r.director || '',
+      city: r.city || '',
+      state: r.state || '',
+      turnover: r.turnover || '',
+      businessNature: r.business_nature || '',
       flagged: Boolean(r.flagged),
     }));
 
     const financials = txnsRes.rows.map((r: any) => ({
       id: r.id,
-      referenceNo: r.reference_no,
-      fromAccount: r.from_account,
-      toAccount: r.to_account,
-      fromAccountId: r.from_account_id,
-      toAccountId: r.to_account_id,
+      referenceNo: r.reference_no || '',
+      fromAccount: r.from_account || '',
+      toAccount: r.to_account || '',
+      fromPersonId: r.from_person_id || '',
+      toPersonId: r.to_person_id || '',
       amount: parseFloat(r.amount) || 0,
-      currency: r.currency || 'INR',
-      txnDate: r.txn_date,
-      channel: r.channel,
-      narration: r.narration,
+      txnType: r.txn_type || '',
+      txnDate: r.txn_date || '',
+      status: r.status || 'Completed',
       flagged: Boolean(r.flagged),
-      flagReason: r.flag_reason,
+      flagReason: r.flag_reason || '',
     }));
 
     const cdrs = cdrsRes.rows.map((r: any) => ({
       id: r.id,
-      callerNumber: r.caller_number,
-      calleeNumber: r.callee_number,
-      callerId: r.caller_id,
-      calleeId: r.callee_id,
-      duration: r.duration,
-      callType: r.call_type || 'CALL',
-      timestamp: r.timestamp,
-      towerLocation: r.tower_location,
+      callerNumber: r.caller_number || '',
+      calleeNumber: r.callee_number || '',
+      callerId: r.caller_id || '',
+      calleeId: r.callee_id || '',
+      duration: r.duration || 0,
+      callType: r.call_type || '',
+      timestamp: r.timestamp || '',
+      towerLocation: r.tower_location || '',
       flagged: Boolean(r.flagged),
-      flagReason: r.flag_reason,
+      flagReason: r.flag_reason || '',
     }));
 
     const accounts = accountsRes.rows.map((r: any) => ({
       id: r.id,
-      accountNumber: r.account_number,
-      bank: r.bank,
-      branch: r.branch,
-      ifsc: r.ifsc,
-      accountType: r.account_type,
-      linkedPerson: r.linked_person,
-      balance: r.balance,
-      suspiciousActivity: Boolean(r.suspicious_activity),
+      accountNumber: r.account_number || '',
+      bankName: r.bank_name || '',
+      accountType: r.account_type || '',
+      holderName: r.holder_name || '',
+      personId: r.person_id || '',
+      balance: parseFloat(r.balance) || 0,
+      status: r.status || 'Active',
+      flagged: Boolean(r.flagged),
     }));
 
     const surveillance = surveillanceRes.rows.map((r: any) => ({
       id: r.id,
-      reportNumber: r.report_number,
-      reportDate: r.report_date,
-      time: r.time,
-      location: r.location,
-      reportingOfficer: r.reporting_officer,
-      personsObserved: r.persons_observed || [],
-      description: r.description,
-      priority: r.priority,
+      targetPersonId: r.target_person_id || '',
+      officerId: r.officer_id || '',
+      reportDate: r.report_date || '',
+      location: r.location || '',
+      observations: r.observations || '',
+      threatLevel: r.threat_level || 'Low',
     }));
 
     const locations = locationsRes.rows.map((r: any) => ({
       id: r.id,
-      name: r.name,
-      locationType: r.location_type,
-      city: r.city,
-      state: r.state,
+      name: r.name || '',
+      locationType: r.location_type || '',
+      city: r.city || '',
+      state: r.state || '',
       lat: parseFloat(r.lat) || 0,
       lng: parseFloat(r.lng) || 0,
-      significance: r.significance,
+      significance: r.significance || '',
     }));
 
     res.json({
       success: true,
-      database: 'Neon Cloud PostgreSQL',
-      host: 'ep-odd-cake-b37vzncm-pooler.c-4.ap-southeast-1.aws.neon.tech',
+      database: customUri ? 'Custom Connected Database' : 'Neon Cloud PostgreSQL',
+      discoveredTables,
       counts: {
         firs: firs.length,
         persons: persons.length,
@@ -191,6 +231,14 @@ router.get('/live-data', async (_req: Request, res: Response): Promise<void> => 
   } catch (error) {
     logger.error('Error fetching live database records:', error);
     res.status(500).json({ success: false, error: (error as Error).message });
+  } finally {
+    if (client) {
+      if (isDedicated) {
+        try { await client.end(); } catch {}
+      } else {
+        try { client.release(); } catch {}
+      }
+    }
   }
 });
 
