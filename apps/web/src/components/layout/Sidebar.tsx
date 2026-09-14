@@ -1,21 +1,23 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, FolderOpen, Network, Users, FileText,
-  Bell, Clock, Bot, Shield, BookOpen, Activity,
+  Bell, Clock, Bot, Shield, BookOpen, Activity, Database, Server,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const navItems = [
-  { path: '/dashboard',      label: 'Dashboard',       icon: LayoutDashboard, section: 'main' },
-  { path: '/investigations', label: 'Investigations',   icon: FolderOpen,      section: 'main' },
-  { path: '/network',        label: 'Network Graph',    icon: Network,         section: 'analysis' },
-  { path: '/entities',       label: 'Entities',         icon: Users,           section: 'analysis' },
-  { path: '/timeline',       label: 'Timeline',         icon: Clock,           section: 'analysis' },
-  { path: '/alerts',         label: 'Alerts',           icon: Bell,            section: 'intel' },
-  { path: '/documents',      label: 'Documents',        icon: FileText,        section: 'intel' },
-  { path: '/ai-assistant',   label: 'AI Assistant',     icon: Bot,             section: 'tools' },
-  { path: '/evidence',       label: 'Evidence',         icon: Shield,          section: 'tools' },
-  { path: '/audit',          label: 'Audit Logs',       icon: BookOpen,        section: 'tools', adminOnly: true },
+  { path: '/dashboard',      label: 'Dashboard',         icon: LayoutDashboard, section: 'main' },
+  { path: '/investigations', label: 'Investigations',     icon: FolderOpen,      section: 'main' },
+  { path: '/network',        label: 'Network Graph',      icon: Network,         section: 'analysis' },
+  { path: '/database',       label: 'Database Explorer',  icon: Database,        section: 'analysis' },
+  { path: '/entities',       label: 'Entities',           icon: Users,           section: 'analysis' },
+  { path: '/timeline',       label: 'Timeline',           icon: Clock,           section: 'analysis' },
+  { path: '/alerts',         label: 'Alerts',             icon: Bell,            section: 'intel' },
+  { path: '/documents',      label: 'Documents',          icon: FileText,        section: 'intel', hideForAdmin: true },
+  { path: '/data-sources',   label: 'Data Sources',       icon: Server,          section: 'tools' },
+  { path: '/ai-assistant',   label: 'AI Assistant',       icon: Bot,             section: 'tools' },
+  { path: '/evidence',       label: 'Evidence',           icon: Shield,          section: 'tools' },
+  { path: '/audit',          label: 'Audit Logs',         icon: BookOpen,        section: 'tools', adminOnly: true },
 ];
 
 const sections = [
@@ -39,7 +41,8 @@ export default function Sidebar() {
     ...s,
     items: navItems.filter(i =>
       i.section === s.key &&
-      (!i.adminOnly || user?.role === 'administrator' || user?.role === 'senior_investigator')
+      (!i.adminOnly || user?.role === 'administrator' || user?.role === 'senior_investigator') &&
+      (!i.hideForAdmin || user?.role !== 'administrator')
     ),
   }));
 

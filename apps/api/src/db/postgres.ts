@@ -4,8 +4,11 @@ import { logger } from '../utils/logger';
 let pool: Pool;
 
 export async function initPostgres(): Promise<void> {
+  const rawUrl = process.env.DATABASE_URL || '';
+  const sanitizedUrl = rawUrl.replace(/([?&])channel_binding=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '');
+
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: sanitizedUrl || undefined,
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432', 10),
     database: process.env.DB_NAME || 'crimegraph_db',
@@ -13,7 +16,8 @@ export async function initPostgres(): Promise<void> {
     password: process.env.DB_PASSWORD || 'crimegraph_dev',
     max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 30000,
+    ssl: process.env.DB_SSL === 'true' || sanitizedUrl.includes('sslmode=') ? { rejectUnauthorized: false } : undefined,
   });
 
   const client = await pool.connect();
@@ -63,7 +67,7 @@ async function runMigrations(client: PoolClient): Promise<void> {
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS users (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      id VARCHAR(64) PRIMARY KEY,
       username VARCHAR(100) UNIQUE NOT NULL,
       email VARCHAR(255) UNIQUE NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
@@ -79,21 +83,21 @@ async function runMigrations(client: PoolClient): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS refresh_tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       token VARCHAR(512) NOT NULL,
       expires_at TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS investigations (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      id VARCHAR(64) PRIMARY KEY,
       case_number VARCHAR(100) UNIQUE NOT NULL,
       title VARCHAR(500) NOT NULL,
       description TEXT,
       status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active','suspended','closed','archived')),
       priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low','medium','high','critical')),
-      created_by UUID REFERENCES users(id),
-      assigned_to UUID REFERENCES users(id),
+      created_by VARCHAR(64) REFERENCES users(id),
+      assigned_to VARCHAR(64) REFERENCES users(id),
       tags TEXT[],
       metadata JSONB DEFAULT '{}',
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -102,19 +106,19 @@ async function runMigrations(client: PoolClient): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS investigation_entities (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      investigation_id UUID NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+      investigation_id VARCHAR(64) NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
       entity_id VARCHAR(255) NOT NULL,
       entity_type VARCHAR(50) NOT NULL,
       entity_label VARCHAR(500),
       is_bookmarked BOOLEAN DEFAULT false,
       notes TEXT,
-      added_by UUID REFERENCES users(id),
+      added_by VARCHAR(64) REFERENCES users(id),
       added_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS documents (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      investigation_id UUID REFERENCES investigations(id),
+      investigation_id VARCHAR(64) REFERENCES investigations(id),
       filename VARCHAR(500) NOT NULL,
       original_name VARCHAR(500) NOT NULL,
       file_type VARCHAR(100),
@@ -125,7 +129,7 @@ async function runMigrations(client: PoolClient): Promise<void> {
       extracted_entities JSONB DEFAULT '[]',
       extracted_relationships JSONB DEFAULT '[]',
       analysis_metadata JSONB DEFAULT '{}',
-      uploaded_by UUID REFERENCES users(id),
+      uploaded_by VARCHAR(64) REFERENCES users(id),
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
@@ -141,30 +145,30 @@ async function runMigrations(client: PoolClient): Promise<void> {
       previous_hash VARCHAR(64),
       block_data JSONB NOT NULL,
       timestamp TIMESTAMPTZ DEFAULT NOW(),
-      created_by UUID REFERENCES users(id),
+      created_by VARCHAR(64) REFERENCES users(id),
       is_genesis BOOLEAN DEFAULT false
     );
 
     CREATE TABLE IF NOT EXISTS alerts (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      id VARCHAR(64) PRIMARY KEY,
       alert_type VARCHAR(100) NOT NULL,
-      severity VARCHAR(20) NOT NULL CHECK (severity IN ('low','medium','high','critical')),
+      severity VARCHAR(20) NOT NULL,
       title VARCHAR(500) NOT NULL,
       description TEXT NOT NULL,
       entity_id VARCHAR(255),
       entity_type VARCHAR(50),
       entity_label VARCHAR(500),
-      investigation_id UUID REFERENCES investigations(id),
+      investigation_id VARCHAR(64) REFERENCES investigations(id),
       evidence JSONB DEFAULT '[]',
       is_acknowledged BOOLEAN DEFAULT false,
-      acknowledged_by UUID REFERENCES users(id),
+      acknowledged_by VARCHAR(64) REFERENCES users(id),
       acknowledged_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS audit_logs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id),
+      user_id VARCHAR(64) REFERENCES users(id),
       username VARCHAR(100),
       action VARCHAR(100) NOT NULL,
       resource_type VARCHAR(100),
@@ -181,14 +185,45 @@ async function runMigrations(client: PoolClient): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS investigation_notes (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      investigation_id UUID NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
-      author_id UUID REFERENCES users(id),
+      investigation_id VARCHAR(64) NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+      author_id VARCHAR(64) REFERENCES users(id),
       content TEXT NOT NULL,
       entity_ref VARCHAR(255),
       is_pinned BOOLEAN DEFAULT false,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS external_data_sources (
+      id VARCHAR(64) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      type VARCHAR(50) NOT NULL,
+      host VARCHAR(500),
+      port INTEGER,
+      database_name VARCHAR(255),
+      username VARCHAR(255),
+      password VARCHAR(500),
+      connection_uri TEXT,
+      auth_type VARCHAR(50) DEFAULT 'password',
+      department VARCHAR(255) DEFAULT 'Intelligence Bureau',
+      classification VARCHAR(50) DEFAULT 'Secret',
+      status VARCHAR(50) DEFAULT 'connected',
+      record_count INTEGER DEFAULT 0,
+      latency_ms INTEGER DEFAULT 0,
+      is_default BOOLEAN DEFAULT false,
+      ssl_enabled BOOLEAN DEFAULT true,
+      description TEXT,
+      created_by VARCHAR(64) REFERENCES users(id),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    ALTER TABLE investigations ADD COLUMN IF NOT EXISTS created_by VARCHAR(64);
+    ALTER TABLE investigations ADD COLUMN IF NOT EXISTS tags TEXT[];
+    ALTER TABLE investigations ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
+    ALTER TABLE investigations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS severity VARCHAR(20);
+    ALTER TABLE alerts ADD COLUMN IF NOT EXISTS entity_id VARCHAR(255);
   `);
 
   // Indexes
