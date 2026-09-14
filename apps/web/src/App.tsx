@@ -18,6 +18,8 @@ import EvidencePage from './pages/EvidencePage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import DatabasePage from './pages/DatabasePage';
 import DataSourcesPage from './pages/DataSourcesPage';
+import InspectorHomePage from './pages/InspectorHomePage';
+import { isInspectorRole } from './lib/permissions';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -27,6 +29,11 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     </div>
   );
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+function RootRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={isInspectorRole(user?.role) ? '/inspector' : '/dashboard'} replace />;
 }
 
 export default function App() {
@@ -41,7 +48,8 @@ export default function App() {
               <AppLayout />
             </RequireAuth>
           }>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route index element={<RootRedirect />} />
+            <Route path="inspector" element={<InspectorHomePage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="investigations" element={<InvestigationsPage />} />
             <Route path="investigations/:id" element={<InvestigationDetailPage />} />

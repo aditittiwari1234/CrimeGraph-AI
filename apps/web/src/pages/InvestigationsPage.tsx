@@ -82,10 +82,20 @@ export default function InvestigationsPage() {
       {/* Create modal */}
       {showCreate && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+          position: 'fixed', inset: 0,
+          zIndex: 200, pointerEvents: 'none',
         }}>
-          <div className="card" style={{ width: 480, animation: 'fadeIn 0.2s ease' }}>
+          <div className="card" style={{
+            position: 'absolute',
+            top: '50%',
+            left: 'calc(var(--sidebar-width) + (100vw - var(--sidebar-width)) / 2)',
+            transform: 'translate(-50%, -50%)',
+            width: 'min(480px, calc(100vw - var(--sidebar-width) - 40px))',
+            animation: 'fadeIn 0.2s ease',
+            boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)',
+            border: '1px solid #cbd5e1',
+            pointerEvents: 'auto',
+          }}>
             <h3 style={{ marginBottom: 16 }}>Create New Investigation</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div className="form-group">

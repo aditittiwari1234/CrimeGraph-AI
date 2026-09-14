@@ -7,6 +7,8 @@ import {
   Plus, Check, X, Server, Trash2
 } from 'lucide-react';
 import { useDatabases } from '../contexts/DatabaseContext';
+import { useAuth } from '../contexts/AuthContext';
+import { canManageDatabases } from '../lib/permissions';
 
 interface DataSource {
   id: string;
@@ -28,6 +30,8 @@ interface DataSource {
 export default function DataSourcesPage() {
   const navigate = useNavigate();
   const { databases, setIsAddModalOpen, setActiveDatabaseId, syncDatabase, removeDatabase, clearAllDatabases } = useDatabases();
+  const { user } = useAuth();
+  const canManage = canManageDatabases(user?.role);
 
   const handleBrowseRecords = (srcId: string) => {
     setActiveDatabaseId(srcId);
@@ -156,7 +160,7 @@ export default function DataSourcesPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {databases.length > 0 && (
+            {canManage && databases.length > 0 && (
               <button
                 onClick={() => {
                   if (confirm('Are you sure you want to disconnect and delete all data sources?')) {
@@ -171,14 +175,14 @@ export default function DataSourcesPage() {
                 Clear All
               </button>
             )}
-            <button
+            {canManage && <button
               onClick={() => setIsAddModalOpen(true)}
               className="btn btn-primary"
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
             >
               <Plus size={15} />
               Connect Database
-            </button>
+            </button>}
             <button
               onClick={() => navigate('/database')}
               className="btn btn-secondary"
@@ -345,14 +349,14 @@ export default function DataSourcesPage() {
           <p style={{ color: '#64748b', fontSize: '0.92rem', lineHeight: 1.6, marginBottom: 24 }}>
             All default data sources have been removed. Add or connect your database manually (PostgreSQL, MongoDB, MySQL, Neo4j, etc.) to start ingesting records and analyzing criminal networks.
           </p>
-          <button
+          {canManage && <button
             onClick={() => setIsAddModalOpen(true)}
             className="btn btn-primary"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', fontSize: '0.95rem' }}
           >
             <Plus size={18} />
             <span>Connect Database Manually</span>
-          </button>
+          </button>}
         </div>
       ) : (
         <div style={{
@@ -449,14 +453,14 @@ export default function DataSourcesPage() {
                 {/* Action Buttons */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button
+                    {canManage && <button
                       onClick={() => handleBrowseRecords(src.id)}
                       className="btn btn-secondary"
                       style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '6px 12px' }}
                     >
                       <Database size={14} />
                       Browse Records
-                    </button>
+                    </button>}
                     <button
                       onClick={(e) => handleDeleteSource(e, src.id)}
                       className="btn btn-secondary"

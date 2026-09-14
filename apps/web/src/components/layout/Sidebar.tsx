@@ -4,9 +4,11 @@ import {
   Bell, Clock, Bot, Shield, BookOpen, Activity, Database, Server,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { canManageDatabases, canViewAuditLogs, isInspectorRole } from '../../lib/permissions';
 
 const navItems = [
   { path: '/dashboard',      label: 'Dashboard',         icon: LayoutDashboard, section: 'main' },
+  { path: '/inspector',      label: 'Inspector Home',    icon: Users,           section: 'main', inspectorOnly: true },
   { path: '/investigations', label: 'Investigations',     icon: FolderOpen,      section: 'main' },
   { path: '/network',        label: 'Network Graph',      icon: Network,         section: 'analysis' },
   { path: '/database',       label: 'Database Explorer',  icon: Database,        section: 'analysis' },
@@ -41,8 +43,10 @@ export default function Sidebar() {
     ...s,
     items: navItems.filter(i =>
       i.section === s.key &&
-      (!i.adminOnly || user?.role === 'administrator' || user?.role === 'senior_investigator') &&
-      (!i.hideForAdmin || user?.role !== 'administrator')
+      (!i.adminOnly || canViewAuditLogs(user?.role)) &&
+      (!i.hideForAdmin || user?.role !== 'administrator') &&
+      (!i.inspectorOnly || isInspectorRole(user?.role)) &&
+      (i.path !== '/database' && i.path !== '/data-sources' || canManageDatabases(user?.role))
     ),
   }));
 

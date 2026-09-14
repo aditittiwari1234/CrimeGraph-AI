@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../db/postgres';
 import { logger } from '../utils/logger';
+import { authenticate, authorize, AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -357,7 +358,7 @@ router.post('/sources', async (req: Request, res: Response): Promise<void> => {
 
 // DELETE /api/database/sources/:id
 // Removes an external data source from the internal database
-router.delete('/sources/:id', async (req: Request, res: Response): Promise<void> => {
+router.delete('/sources/:id', authenticate, authorize('administrator'), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     await query('DELETE FROM external_data_sources WHERE id = $1', [id]);
@@ -370,7 +371,7 @@ router.delete('/sources/:id', async (req: Request, res: Response): Promise<void>
 
 // DELETE /api/database/sources
 // Clears all external data sources
-router.delete('/sources', async (_req: Request, res: Response): Promise<void> => {
+router.delete('/sources', authenticate, authorize('administrator'), async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     await query('DELETE FROM external_data_sources');
     res.json({ success: true });
