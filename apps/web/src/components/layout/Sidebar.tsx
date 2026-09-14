@@ -29,12 +29,6 @@ const sections = [
   { key: 'tools',    label: 'Tools' },
 ];
 
-const roleColors: Record<string, string> = {
-  administrator:      '#dc2626',
-  senior_investigator:'#7c3aed',
-  investigator:       '#2563eb',
-  analyst:            '#0891b2',
-};
 
 export default function Sidebar() {
   const { user } = useAuth();
@@ -107,7 +101,7 @@ export default function Sidebar() {
       {/* Nav */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
         {investigationId && (
-          <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #e2e8f0' }}>
+          <div style={{ marginBottom: 10, paddingBottom: 8 }}>
             <div style={{ padding: '10px 10px 4px', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#7c3aed' }}>
               Current Investigation
             </div>
@@ -183,31 +177,6 @@ export default function Sidebar() {
         ))}
       </div>
 
-      {/* User footer */}
-      <div style={{
-        padding: '12px 14px',
-        borderTop: '1px solid #f1f5f9',
-        background: '#fafafa',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-            background: roleColors[user?.role || ''] || '#2563eb',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.8rem', fontWeight: 700, color: 'white',
-          }}>
-            {user?.fullName?.charAt(0) || 'U'}
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {user?.fullName}
-            </div>
-            <div style={{ fontSize: '0.68rem', color: '#94a3b8', textTransform: 'capitalize' }}>
-              {user?.role?.replace(/_/g, ' ')}
-            </div>
-          </div>
-        </div>
-      </div>
     </nav>
   );
 }
