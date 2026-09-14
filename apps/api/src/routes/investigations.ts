@@ -53,6 +53,22 @@ router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> 
   }
 });
 
+// GET /api/investigations/officers — active officers available for case assignment
+router.get('/officers', async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const result = await query(
+      `SELECT id, username, full_name, role, badge_number, department
+       FROM users
+       WHERE is_active = true AND role IN ('investigator', 'senior_investigator')
+       ORDER BY full_name`
+    );
+    res.json({ officers: result.rows });
+  } catch (error) {
+    logger.error('Get officers error:', error);
+    res.status(500).json({ error: 'Failed to fetch officers' });
+  }
+});
+
 // GET /api/investigations/:id
 router.get('/:id', param('id').isUUID(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const errors = validationResult(req);
@@ -103,20 +119,21 @@ router.post(
     body('description').optional().trim(),
     body('priority').optional().isIn(['low', 'medium', 'high', 'critical']),
     body('tags').optional().isArray(),
+    body('assignedTo').optional({ values: 'falsy' }).isUUID().withMessage('Assigned officer must be valid'),
   ],
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
 
-    const { title, description, priority = 'medium', tags = [] } = req.body;
+    const { title, description, priority = 'medium', tags = [], assignedTo } = req.body;
     const caseNumber = `CASE-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 90000) + 10000)}`;
 
     try {
       const result = await query(
         `INSERT INTO investigations (case_number, title, description, priority, tags, created_by, assigned_to, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $6, 'active')
+         VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, $6), 'active')
          RETURNING *`,
-        [caseNumber, title, description, priority, tags, req.user?.id]
+        [caseNumber, title, description, priority, tags, req.user?.id, assignedTo || null]
       );
 
       await logAction(req.user?.id, req.user?.username, 'CREATE_INVESTIGATION', 'investigation', result.rows[0].id, `Created investigation: ${title}`, req.ip || '', req.headers['user-agent'] || '', 'success');
