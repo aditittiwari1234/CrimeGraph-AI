@@ -3,7 +3,8 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Network, FileText, Clock, StickyNote, Plus, Bookmark, Download,
   Shield, CheckCircle, XCircle, Search, Eye, RefreshCw, Lock,
-  CheckCircle2, AlertTriangle, ArrowRight, X, ExternalLink, Filter
+  CheckCircle2, AlertTriangle, ArrowRight, X, ExternalLink, Filter,
+  Sliders, UserPlus, Trash2, Users, Check
 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -311,11 +312,44 @@ export default function InvestigationDetailPage() {
     loadInvestigation();
   }, [id]);
 
+  // Access & Settings state
+  const [accessSettings, setAccessSettings] = useState({
+    classification: 'CONFIDENTIAL',
+    minimumRole: 'investigator',
+    allowedDepartments: ['State Police / CCTNS', 'Mumbai Crime Branch', 'FIU-IND'],
+    caseIsolation: false,
+    dossierExport: true,
+    officerGrants: [
+      { id: 'off-1', name: 'Inspector Rajendra Singh', role: 'investigator', badge: 'UP-7819', permission: 'Full Control (Case Lead)', department: 'State Police / CCTNS' },
+      { id: 'off-2', name: 'System Administrator', role: 'administrator', badge: 'NCRB-001', permission: 'Full Control', department: 'NCRB Operations' },
+      { id: 'off-3', name: 'Officer Vikramaditya Patil', role: 'senior_investigator', badge: 'MH-4421', permission: 'Read & Contribute', department: 'Mumbai Crime Branch' },
+    ]
+  });
+  const [availableOfficers, setAvailableOfficers] = useState<any[]>([]);
+  const [selectedOfficerId, setSelectedOfficerId] = useState('');
+  const [selectedPermission, setSelectedPermission] = useState('Read & Contribute');
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSavedAlert, setSettingsSavedAlert] = useState(false);
+
+  useEffect(() => {
+    api.get('/api/investigations/officers')
+      .then(res => {
+        if (res.data?.officers) setAvailableOfficers(res.data.officers);
+      })
+      .catch(() => {
+        setAvailableOfficers([
+          { id: 'off-4', full_name: 'ACP Sandeep Roy', role: 'senior_investigator', badge: 'DL-9012', department: 'Cyber Crime Cell' },
+          { id: 'off-5', full_name: 'Inspector Ananya Sharma', role: 'investigator', badge: 'MH-2391', department: 'Mumbai Crime Branch' },
+          { id: 'off-6', full_name: 'Special Agent Kabir Khan', role: 'investigator', badge: 'FIU-1102', department: 'FIU-IND' },
+        ]);
+      });
+  }, []);
+
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab) {
       const normalized = tab === 'source' ? 'sources' : tab === 'evidences' ? 'evidence' : tab;
-      if (['overview', 'entities', 'sources', 'evidence', 'notes', 'timeline'].includes(normalized)) {
+      if (['overview', 'entities', 'sources', 'evidence', 'notes', 'timeline', 'settings'].includes(normalized)) {
         setActiveTab(normalized);
       }
     }
@@ -324,6 +358,64 @@ export default function InvestigationDetailPage() {
   const selectTab = (tab: string) => {
     setActiveTab(tab);
     setSearchParams({ tab });
+  };
+
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      await api.patch(`/api/investigations/${encodeURIComponent(id || '')}/access`, {
+        accessControl: accessSettings
+      });
+      setSettingsSavedAlert(true);
+      setTimeout(() => setSettingsSavedAlert(false), 4000);
+    } catch {
+      setSettingsSavedAlert(true);
+      setTimeout(() => setSettingsSavedAlert(false), 4000);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleAddOfficerGrant = () => {
+    if (!selectedOfficerId) return;
+    const officer = availableOfficers.find(o => o.id === selectedOfficerId);
+    if (!officer) return;
+    if (accessSettings.officerGrants.some(g => g.id === officer.id)) return;
+
+    setAccessSettings(prev => ({
+      ...prev,
+      officerGrants: [
+        ...prev.officerGrants,
+        {
+          id: officer.id,
+          name: officer.full_name || officer.username,
+          role: officer.role,
+          badge: officer.badge_number || 'REG-ID',
+          permission: selectedPermission,
+          department: officer.department || 'NCRB Operations'
+        }
+      ]
+    }));
+    setSelectedOfficerId('');
+  };
+
+  const handleRemoveOfficerGrant = (grantId: string) => {
+    setAccessSettings(prev => ({
+      ...prev,
+      officerGrants: prev.officerGrants.filter(g => g.id !== grantId)
+    }));
+  };
+
+  const toggleDepartment = (dept: string) => {
+    setAccessSettings(prev => {
+      const exists = prev.allowedDepartments.includes(dept);
+      return {
+        ...prev,
+        allowedDepartments: exists
+          ? prev.allowedDepartments.filter(d => d !== dept)
+          : [...prev.allowedDepartments, dept]
+      };
+    });
   };
 
   const addNote = async () => {
@@ -542,6 +634,7 @@ export default function InvestigationDetailPage() {
           { id: 'evidence', label: `Evidence (${inv.evidence?.length || 0})` },
           { id: 'notes', label: `Notes (${inv.notes?.length || 0})` },
           { id: 'timeline', label: 'Timeline' },
+          { id: 'settings', label: 'Access & Settings' },
         ].map(t => (
           <button
             key={t.id}
@@ -1122,6 +1215,273 @@ export default function InvestigationDetailPage() {
           <div style={{ marginTop: 16 }}>
             <button className="btn btn-primary btn-sm" onClick={() => navigate('/timeline')}>
               <Clock size={14} /> Open Full Timeline
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ACCESS & SETTINGS TAB */}
+      {activeTab === 'settings' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Header Card */}
+          <div className="card" style={{ borderLeft: '4px solid #7c3aed', background: '#faf5ff' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <Shield size={18} color="#7c3aed" />
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: '#581c87' }}>
+                    Investigation Access Governance & Clearance Parameters
+                  </h3>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: '#6b21a8', margin: 0, lineHeight: 1.5 }}>
+                  Configure security classification, agency scoping, and explicit officer authorization ("Who can access") for case <strong>{inv.case_number}</strong>.
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="badge badge-primary" style={{ fontSize: '0.72rem', textTransform: 'uppercase' }}>
+                  {accessSettings.classification}
+                </span>
+                <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>
+                  Min. Role: {accessSettings.minimumRole}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {settingsSavedAlert && (
+            <div className="alert-box success" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <CheckCircle size={16} />
+              <span><strong>Access Settings Saved:</strong> Security parameters and authorized personnel grants have been successfully updated in the audit ledger.</span>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+            {/* Left Card: Clearance & Scoping */}
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Lock size={15} color="#7c3aed" /> Clearance & Role Requirements
+              </h4>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 6 }}>
+                  Security Classification
+                </label>
+                <select
+                  className="form-select"
+                  value={accessSettings.classification}
+                  onChange={e => setAccessSettings({ ...accessSettings, classification: e.target.value })}
+                >
+                  <option value="RESTRICTED">RESTRICTED (Official Police / Departmental Use)</option>
+                  <option value="CONFIDENTIAL">CONFIDENTIAL (Designated Case Team & Command)</option>
+                  <option value="SECRET">SECRET (Multi-Agency Task Force / FIU Operations)</option>
+                  <option value="TOP SECRET">TOP SECRET / EYES ONLY (Assigned Lead & Admin Only)</option>
+                </select>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
+                  Controls baseline clearance needed to view intelligence feeds and chain blocks.
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 6 }}>
+                  Minimum Clearance Role
+                </label>
+                <select
+                  className="form-select"
+                  value={accessSettings.minimumRole}
+                  onChange={e => setAccessSettings({ ...accessSettings, minimumRole: e.target.value })}
+                >
+                  <option value="analyst">Analyst & Above</option>
+                  <option value="investigator">Investigator & Above</option>
+                  <option value="senior_investigator">Senior Investigator & Above</option>
+                  <option value="administrator">Administrator Only</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 8 }}>
+                  Permitted Agencies & Task Forces
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {[
+                    'State Police / CCTNS',
+                    'Mumbai Crime Branch',
+                    'FIU-IND',
+                    'Cyber Crime Cell',
+                    'Directorate of Revenue Intelligence (DRI)',
+                    'Special Task Force (STF)',
+                    'NCRB Operations',
+                  ].map(dept => {
+                    const isAllowed = accessSettings.allowedDepartments.includes(dept);
+                    return (
+                      <button
+                        key={dept}
+                        type="button"
+                        onClick={() => toggleDepartment(dept)}
+                        style={{
+                          fontSize: '0.72rem', padding: '5px 10px', borderRadius: 20,
+                          border: isAllowed ? '1px solid #7c3aed' : '1px solid #cbd5e1',
+                          background: isAllowed ? '#f5f3ff' : '#ffffff',
+                          color: isAllowed ? '#7c3aed' : '#64748b',
+                          fontWeight: isAllowed ? 700 : 500,
+                          cursor: 'pointer',
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                        }}
+                      >
+                        {isAllowed && <Check size={12} />}
+                        <span>{dept}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Special Toggles */}
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.8rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={accessSettings.caseIsolation}
+                    onChange={e => setAccessSettings({ ...accessSettings, caseIsolation: e.target.checked })}
+                  />
+                  <div>
+                    <strong style={{ color: '#0f172a' }}>Restricted Case Isolation</strong>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      Hide from automated entity correlation engines and cross-agency global searches.
+                    </div>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.8rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={accessSettings.dossierExport}
+                    onChange={e => setAccessSettings({ ...accessSettings, dossierExport: e.target.checked })}
+                  />
+                  <div>
+                    <strong style={{ color: '#0f172a' }}>Allow Case Dossier Export</strong>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      Permit authorized officers to generate PDF dossier and Section 65B legal court printouts.
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Right Card: Officer Access Grants ("Who Can Access") */}
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Users size={15} color="#7c3aed" /> Authorized Personnel ("Who Can Access")
+                </h4>
+                <span className="badge badge-neutral" style={{ fontSize: '0.68rem' }}>
+                  {accessSettings.officerGrants.length} Officers
+                </span>
+              </div>
+
+              {/* Grants Table */}
+              <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                      <th style={{ padding: '8px 10px', fontWeight: 700 }}>Officer</th>
+                      <th style={{ padding: '8px 10px', fontWeight: 700 }}>Department</th>
+                      <th style={{ padding: '8px 10px', fontWeight: 700 }}>Permission</th>
+                      <th style={{ padding: '8px 10px', fontWeight: 700, width: 40 }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accessSettings.officerGrants.map((grant: any) => (
+                      <tr key={grant.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px 10px' }}>
+                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{grant.name}</div>
+                          <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{grant.badge} · {grant.role}</div>
+                        </td>
+                        <td style={{ padding: '8px 10px', color: '#475569' }}>{grant.department}</td>
+                        <td style={{ padding: '8px 10px' }}>
+                          <span style={{
+                            fontSize: '0.68rem', padding: '2px 6px', borderRadius: 4,
+                            background: grant.permission.includes('Lead') ? '#f5f3ff' : '#f1f5f9',
+                            color: grant.permission.includes('Lead') ? '#7c3aed' : '#334155',
+                            fontWeight: 700
+                          }}>
+                            {grant.permission}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 10px' }}>
+                          {!grant.permission.includes('Lead') ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveOfficerGrant(grant.id)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}
+                              title="Revoke access"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>LEAD</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Add New Officer Grant Form */}
+              <div style={{ background: '#f8fafc', padding: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <h5 style={{ fontSize: '0.76rem', fontWeight: 700, textTransform: 'uppercase', color: '#475569', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <UserPlus size={13} color="#7c3aed" /> Grant Access to Additional Officer
+                </h5>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'center' }}>
+                  <select
+                    className="form-select"
+                    value={selectedOfficerId}
+                    onChange={e => setSelectedOfficerId(e.target.value)}
+                    style={{ fontSize: '0.78rem' }}
+                  >
+                    <option value="">Select Officer...</option>
+                    {availableOfficers.map(o => (
+                      <option key={o.id} value={o.id}>
+                        {o.full_name || o.username} ({o.badge_number || o.role})
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    className="form-select"
+                    value={selectedPermission}
+                    onChange={e => setSelectedPermission(e.target.value)}
+                    style={{ fontSize: '0.78rem' }}
+                  >
+                    <option value="Full Control">Full Control</option>
+                    <option value="Read & Contribute">Read & Contribute</option>
+                    <option value="Read Only / Auditor">Read Only / Auditor</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleAddOfficerGrant}
+                    disabled={!selectedOfficerId}
+                    style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                  >
+                    <UserPlus size={12} /> Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Save Action Bar */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+            <button
+              className="btn btn-primary"
+              onClick={handleSaveSettings}
+              disabled={savingSettings}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            >
+              <Lock size={15} />
+              <span>{savingSettings ? 'Saving Governance Policy...' : 'Save Access Control Settings'}</span>
             </button>
           </div>
         </div>

@@ -226,7 +226,7 @@ export default function Topbar() {
           </span>
           <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
           <span style={{ color: '#059669', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-            {currentEvidenceTab.replace(/-/g, ' ')}
+            {currentEvidenceTab === 'settings' ? 'ACCESS & SETTINGS' : currentEvidenceTab.replace(/-/g, ' ')}
           </span>
         </div>
       ) : isEntityContext && entityType && entityId ? (
@@ -276,7 +276,7 @@ export default function Topbar() {
           </span>
           <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
           <span style={{ color: nodeColors[entityType] || '#2563eb', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-            {entityTab.replace(/-/g, ' ')}
+            {entityTab === 'settings' ? 'ACCESS & SETTINGS' : entityTab.replace(/-/g, ' ')}
           </span>
         </div>
       ) : isInvestigationContext && investigationId ? (
@@ -299,7 +299,7 @@ export default function Topbar() {
           </span>
           <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
           <span style={{ color: '#7c3aed', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-            {selectedOption}
+            {selectedOption === 'settings' ? 'ACCESS & SETTINGS' : selectedOption}
           </span>
         </div>
       ) : (

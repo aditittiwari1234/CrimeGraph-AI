@@ -187,6 +187,64 @@ router.post('/:id/verify', async (req: AuthenticatedRequest, res: Response): Pro
     logger.error('Evidence verify error:', error);
     res.status(500).json({ error: 'Verification failed' });
   }
+// PATCH /api/evidence/:id/access — update custody & access permissions for evidence block
+router.patch('/:id/access', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { accessControl } = req.body;
+  if (!accessControl) {
+    res.status(400).json({ error: 'accessControl payload is required' });
+    return;
+  }
+
+  try {
+    const result = await query(
+      'SELECT id, evidence_id, block_data FROM evidence_ledger WHERE evidence_id = $1 OR id::text = $1',
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'Evidence record not found' });
+      return;
+    }
+
+    const row = result.rows[0];
+    const currentBlockData = typeof row.block_data === 'string' ? JSON.parse(row.block_data) : (row.block_data || {});
+    const updatedBlockData = {
+      ...currentBlockData,
+      access_control: {
+        ...accessControl,
+        updated_at: new Date().toISOString(),
+        updated_by: req.user?.id,
+        updated_by_name: req.user?.fullName || req.user?.username,
+      },
+    };
+
+    await query(
+      'UPDATE evidence_ledger SET block_data = $1 WHERE id = $2',
+      [JSON.stringify(updatedBlockData), row.id]
+    );
+
+    await logAction(
+      req.user?.id,
+      req.user?.username,
+      'UPDATE_EVIDENCE_ACCESS',
+      'evidence',
+      row.evidence_id,
+      `Updated custody & access permissions for evidence ${row.evidence_id} (Seal: ${accessControl.courtSeal ? 'LOCKED' : 'OPEN'})`,
+      req.ip || '',
+      req.headers['user-agent'] || '',
+      'success',
+      { accessControl }
+    );
+
+    res.json({
+      message: 'Evidence custody & access control updated successfully',
+      evidenceId: row.evidence_id,
+      accessControl: updatedBlockData.access_control,
+    });
+  } catch (error) {
+    logger.error('Update evidence access error:', error);
+    res.status(500).json({ error: 'Failed to update evidence access control' });
+  }
 });
 
 export default router;

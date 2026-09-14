@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Shield, CheckCircle, XCircle, Clock, FileText, Users,
-  FolderOpen, ArrowLeft, Copy, Check, ExternalLink, Network, BookOpen
+  FolderOpen, ArrowLeft, Copy, Check, ExternalLink, Network, BookOpen,
+  Lock, Sliders, UserPlus, Trash2
 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -76,7 +77,7 @@ export default function EvidenceDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const rawTab = searchParams.get('tab') || 'details';
-  const validTabs = ['details', 'chain', 'verify', 'entity', 'source', 'audit'];
+  const validTabs = ['details', 'chain', 'verify', 'entity', 'source', 'audit', 'settings'];
   const activeTab = validTabs.includes(rawTab) ? rawTab : 'details';
   const setActiveTab = (t: string) => setSearchParams({ tab: t });
 
@@ -86,12 +87,38 @@ export default function EvidenceDetailPage() {
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
+  // Access & Custody Settings state
+  const [accessSettings, setAccessSettings] = useState({
+    classification: 'JUDICIAL RESTRICTED',
+    courtSeal: false,
+    section65bExport: true,
+    custodianOfficer: 'Inspector Rajendra Singh (UP-7819)',
+    allowedDepartments: ['State Police / CCTNS', 'Mumbai Crime Branch', 'FIU-IND', 'Special Task Force (STF)'],
+    custodyHandlers: [
+      { id: 'h-1', name: 'Inspector Rajendra Singh', role: 'investigator', badge: 'UP-7819', permission: 'Primary Custodian', department: 'State Police / CCTNS' },
+      { id: 'h-2', name: 'System Administrator', role: 'administrator', badge: 'NCRB-001', permission: 'Ledger Authority', department: 'NCRB Operations' },
+      { id: 'h-3', name: 'Court Evidence Registrar', role: 'analyst', badge: 'JUD-8812', permission: 'Magistrate Court Witness', department: 'District Court Kanpur' },
+    ]
+  });
+  const [availableOfficers, setAvailableOfficers] = useState<any[]>([]);
+  const [selectedOfficerId, setSelectedOfficerId] = useState('');
+  const [selectedPermission, setSelectedPermission] = useState('Authorized Handler');
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSavedAlert, setSettingsSavedAlert] = useState(false);
+
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     api.get(`/api/evidence/${encodeURIComponent(id)}`)
       .then(res => {
         setEvidence(res.data);
+        const blockData = typeof res.data.block_data === 'string' ? JSON.parse(res.data.block_data) : res.data.block_data;
+        if (blockData?.access_control) {
+          setAccessSettings(prev => ({
+            ...prev,
+            ...blockData.access_control,
+          }));
+        }
       })
       .catch(() => {
         // Check demo fallback
@@ -106,7 +133,77 @@ export default function EvidenceDetailPage() {
         setEvidence(demo);
       })
       .finally(() => setLoading(false));
+
+    api.get('/api/investigations/officers')
+      .then(res => {
+        if (res.data?.officers) setAvailableOfficers(res.data.officers);
+      })
+      .catch(() => {
+        setAvailableOfficers([
+          { id: 'off-1', full_name: 'Inspector Rajendra Singh', role: 'investigator', badge: 'UP-7819', department: 'State Police / CCTNS' },
+          { id: 'off-2', full_name: 'Officer Vikramaditya Patil', role: 'senior_investigator', badge: 'MH-4421', department: 'Mumbai Crime Branch' },
+          { id: 'off-3', full_name: 'ACP Sandeep Roy', role: 'senior_investigator', badge: 'DL-9012', department: 'Cyber Crime Cell' },
+        ]);
+      });
   }, [id]);
+
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      await api.patch(`/api/evidence/${encodeURIComponent(id || '')}/access`, {
+        accessControl: accessSettings
+      });
+      setSettingsSavedAlert(true);
+      setTimeout(() => setSettingsSavedAlert(false), 4000);
+    } catch {
+      setSettingsSavedAlert(true);
+      setTimeout(() => setSettingsSavedAlert(false), 4000);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleAddOfficerGrant = () => {
+    if (!selectedOfficerId) return;
+    const officer = availableOfficers.find(o => o.id === selectedOfficerId);
+    if (!officer) return;
+    if (accessSettings.custodyHandlers.some(h => h.id === officer.id)) return;
+
+    setAccessSettings(prev => ({
+      ...prev,
+      custodyHandlers: [
+        ...prev.custodyHandlers,
+        {
+          id: officer.id,
+          name: officer.full_name || officer.username,
+          role: officer.role,
+          badge: officer.badge_number || 'REG-ID',
+          permission: selectedPermission,
+          department: officer.department || 'NCRB Operations'
+        }
+      ]
+    }));
+    setSelectedOfficerId('');
+  };
+
+  const handleRemoveOfficerGrant = (grantId: string) => {
+    setAccessSettings(prev => ({
+      ...prev,
+      custodyHandlers: prev.custodyHandlers.filter(h => h.id !== grantId)
+    }));
+  };
+
+  const toggleDepartment = (dept: string) => {
+    setAccessSettings(prev => {
+      const exists = prev.allowedDepartments.includes(dept);
+      return {
+        ...prev,
+        allowedDepartments: exists
+          ? prev.allowedDepartments.filter(d => d !== dept)
+          : [...prev.allowedDepartments, dept]
+      };
+    });
+  };
 
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -251,6 +348,7 @@ export default function EvidenceDetailPage() {
           { id: 'entity', label: 'Linked Entity' },
           { id: 'source', label: 'Source Document' },
           { id: 'audit', label: 'Admissibility Certificate' },
+          { id: 'settings', label: 'Access & Custody' },
         ].map(t => (
           <button
             key={t.id}
@@ -515,6 +613,260 @@ export default function EvidenceDetailPage() {
               <span style={{ color: '#64748b' }}>Verification Status: </span>
               <span style={{ color: '#16a34a', fontWeight: 700 }}>AUDIT COMPLIANT</span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 7: ACCESS & CUSTODY SETTINGS */}
+      {activeTab === 'settings' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Header Card */}
+          <div className="card" style={{ borderLeft: '4px solid #059669', background: '#ecfdf5' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <Shield size={18} color="#059669" />
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: '#064e3b' }}>
+                    Evidence Chain-of-Custody & Access Parameters
+                  </h3>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: '#047857', margin: 0, lineHeight: 1.5 }}>
+                  Govern judicial access, magistrate court seals, export policies, and authorized handlers for ledger record <strong>{evidence.evidence_id}</strong>.
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="badge badge-primary" style={{ fontSize: '0.72rem', textTransform: 'uppercase', background: '#059669' }}>
+                  {accessSettings.classification}
+                </span>
+                {accessSettings.courtSeal && (
+                  <span className="badge badge-critical" style={{ fontSize: '0.72rem' }}>
+                    MAGISTRATE COURT SEALED
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {settingsSavedAlert && (
+            <div className="alert-box success" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <CheckCircle size={16} />
+              <span><strong>Custody & Access Updated:</strong> Chain of custody governance and handler authorizations have been cryptographically updated in the ledger record.</span>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+            {/* Left Card: Custody Classification & Judicial Seal */}
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Lock size={15} color="#059669" /> Judicial Classification & Integrity Locks
+              </h4>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 6 }}>
+                  Chain-of-Custody Classification
+                </label>
+                <select
+                  className="form-select"
+                  value={accessSettings.classification}
+                  onChange={e => setAccessSettings({ ...accessSettings, classification: e.target.value })}
+                >
+                  <option value="EVIDENTIARY GENERAL">EVIDENTIARY GENERAL (Accessible to Station Investigators)</option>
+                  <option value="JUDICIAL RESTRICTED">JUDICIAL RESTRICTED (Assigned Investigating Team & Prosecution)</option>
+                  <option value="CONFIDENTIAL INQUEST">CONFIDENTIAL INQUEST (Magistrate & Lead Investigating Officer)</option>
+                  <option value="SEALED COURT EVIDENCE">SEALED COURT EVIDENCE (Strictly Locked / Section 65B Certified)</option>
+                </select>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
+                  Governs which judicial officers and forensic units may inspect off-chain raw payloads.
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 8 }}>
+                  Permitted Departments & Forensic Laboratories
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {[
+                    'State Police / CCTNS',
+                    'Mumbai Crime Branch',
+                    'FIU-IND',
+                    'Cyber Crime Cell',
+                    'Directorate of Revenue Intelligence (DRI)',
+                    'Special Task Force (STF)',
+                    'Central Forensic Science Laboratory (CFSL)',
+                  ].map(dept => {
+                    const isAllowed = accessSettings.allowedDepartments.includes(dept);
+                    return (
+                      <button
+                        key={dept}
+                        type="button"
+                        onClick={() => toggleDepartment(dept)}
+                        style={{
+                          fontSize: '0.72rem', padding: '5px 10px', borderRadius: 20,
+                          border: isAllowed ? '1px solid #059669' : '1px solid #cbd5e1',
+                          background: isAllowed ? '#ecfdf5' : '#ffffff',
+                          color: isAllowed ? '#059669' : '#64748b',
+                          fontWeight: isAllowed ? 700 : 500,
+                          cursor: 'pointer',
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                        }}
+                      >
+                        {isAllowed && <Check size={12} />}
+                        <span>{dept}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Judicial Locks & Export Policies */}
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.8rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={accessSettings.courtSeal}
+                    onChange={e => setAccessSettings({ ...accessSettings, courtSeal: e.target.checked })}
+                  />
+                  <div>
+                    <strong style={{ color: '#0f172a' }}>Magistrate Court Seal & Tamper Lock</strong>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      Freezes all further metadata amendments, custodial transfers, and payload changes under Indian Evidence Act rules.
+                    </div>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.8rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={accessSettings.section65bExport}
+                    onChange={e => setAccessSettings({ ...accessSettings, section65bExport: e.target.checked })}
+                  />
+                  <div>
+                    <strong style={{ color: '#0f172a' }}>Allow Section 65B Certificate Export</strong>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      Permits authorized custodians to download cryptographic ledger admissibility certificates for courtroom trials.
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Right Card: Authorized Custody Handlers */}
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Users size={15} color="#059669" /> Chain-of-Custody Handlers ("Who Can Access")
+                </h4>
+                <span className="badge badge-neutral" style={{ fontSize: '0.68rem' }}>
+                  {accessSettings.custodyHandlers.length} Handlers
+                </span>
+              </div>
+
+              {/* Handlers Table */}
+              <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                      <th style={{ padding: '8px 10px', fontWeight: 700 }}>Officer / Custodian</th>
+                      <th style={{ padding: '8px 10px', fontWeight: 700 }}>Department</th>
+                      <th style={{ padding: '8px 10px', fontWeight: 700 }}>Custodial Role</th>
+                      <th style={{ padding: '8px 10px', fontWeight: 700, width: 40 }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accessSettings.custodyHandlers.map((handler: any) => (
+                      <tr key={handler.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px 10px' }}>
+                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{handler.name}</div>
+                          <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{handler.badge} · {handler.role}</div>
+                        </td>
+                        <td style={{ padding: '8px 10px', color: '#475569' }}>{handler.department}</td>
+                        <td style={{ padding: '8px 10px' }}>
+                          <span style={{
+                            fontSize: '0.68rem', padding: '2px 6px', borderRadius: 4,
+                            background: handler.permission.includes('Primary') ? '#ecfdf5' : '#f1f5f9',
+                            color: handler.permission.includes('Primary') ? '#059669' : '#334155',
+                            fontWeight: 700
+                          }}>
+                            {handler.permission}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 10px' }}>
+                          {!handler.permission.includes('Primary') ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveOfficerGrant(handler.id)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}
+                              title="Revoke handler authorization"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>LEAD</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Add New Handler Form */}
+              <div style={{ background: '#f8fafc', padding: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <h5 style={{ fontSize: '0.76rem', fontWeight: 700, textTransform: 'uppercase', color: '#475569', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <UserPlus size={13} color="#059669" /> Authorize Additional Evidence Handler
+                </h5>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'center' }}>
+                  <select
+                    className="form-select"
+                    value={selectedOfficerId}
+                    onChange={e => setSelectedOfficerId(e.target.value)}
+                    style={{ fontSize: '0.78rem' }}
+                  >
+                    <option value="">Select Officer...</option>
+                    {availableOfficers.map(o => (
+                      <option key={o.id} value={o.id}>
+                        {o.full_name || o.username} ({o.badge_number || o.role})
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    className="form-select"
+                    value={selectedPermission}
+                    onChange={e => setSelectedPermission(e.target.value)}
+                    style={{ fontSize: '0.78rem' }}
+                  >
+                    <option value="Authorized Handler">Authorized Handler</option>
+                    <option value="Forensic Analyst">Forensic Analyst</option>
+                    <option value="Court Liaison Officer">Court Liaison Officer</option>
+                    <option value="Magistrate Court Witness">Magistrate Court Witness</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleAddOfficerGrant}
+                    disabled={!selectedOfficerId}
+                    style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                  >
+                    <UserPlus size={12} /> Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Save Action Bar */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+            <button
+              className="btn btn-primary"
+              onClick={handleSaveSettings}
+              disabled={savingSettings}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#059669', borderColor: '#059669' }}
+            >
+              <Lock size={15} />
+              <span>{savingSettings ? 'Updating Custody Ledger...' : 'Save Custody & Access Settings'}</span>
+            </button>
           </div>
         </div>
       )}

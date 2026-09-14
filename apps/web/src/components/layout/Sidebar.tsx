@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, FolderOpen, Network, Users, FileText,
-  Bell, Clock, Bot, Shield, BookOpen, Activity, Database, Server,
+  Bell, Clock, Bot, Shield, BookOpen, Activity, Database, Server, Sliders,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { canManageDatabases, canViewAuditLogs, isInspectorRole } from '../../lib/permissions';
@@ -29,7 +29,7 @@ const sections = [
   { key: 'main',     label: 'Investigation' },
   { key: 'analysis', label: 'Analysis' },
   { key: 'intel',    label: 'Intelligence' },
-  { key: 'tools',    label: 'Tools' },
+  { key: 'tools',    label: 'System & Tools' },
 ];
 
 const nodeColors: Record<string, string> = {
@@ -58,7 +58,7 @@ export default function Sidebar() {
   const isInvestigationDetail = Boolean(investigationMatch);
   const investigationId = investigationMatch
     ? decodeURIComponent(investigationMatch[1])
-    : ['/network', '/documents', '/evidence', '/timeline', '/data-sources', '/ai-assistant'].includes(location.pathname)
+    : ['/network', '/timeline', '/ai-assistant'].includes(location.pathname)
       ? new URLSearchParams(location.search).get('investigation')
       : null;
   const currentInvestigationTab = new URLSearchParams(location.search).get('tab') || 'overview';
@@ -151,6 +151,7 @@ export default function Sidebar() {
     { path: `/investigations/${encodeURIComponent(investigationId)}?tab=timeline`, label: 'Timeline', icon: Clock },
     { path: `/network?investigation=${encodeURIComponent(investigationId)}`, label: 'Network Graph', icon: Network },
     { path: `/ai-assistant?investigation=${encodeURIComponent(investigationId)}`, label: 'AI Assistant', icon: Bot },
+    { path: `/investigations/${encodeURIComponent(investigationId)}?tab=settings`, label: 'Access & Settings', icon: Sliders },
   ] : [];
 
   const entityItems = (entityType && entityId) ? [
@@ -190,6 +191,12 @@ export default function Sidebar() {
       icon: Clock,
       pagePath: '/timeline',
     },
+    {
+      path: `/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?tab=settings`,
+      label: 'Access & Settings',
+      icon: Sliders,
+      tab: 'settings',
+    },
   ] : [];
 
   const evidenceItems = evidenceId ? [
@@ -228,6 +235,12 @@ export default function Sidebar() {
       label: 'Court Certificate',
       icon: BookOpen,
       tab: 'audit',
+    },
+    {
+      path: `/evidence/${encodeURIComponent(evidenceId)}?tab=settings`,
+      label: 'Access & Settings',
+      icon: Sliders,
+      tab: 'settings',
     },
   ] : [];
 

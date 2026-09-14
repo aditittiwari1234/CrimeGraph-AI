@@ -203,8 +203,68 @@ router.patch('/:id', param('id').isUUID(), async (req: AuthenticatedRequest, res
   } catch (error) {
     logger.error('Update investigation error:', error);
     res.status(500).json({ error: 'Failed to update investigation' });
+// PATCH /api/investigations/:id/access — update clearance and access control settings
+router.patch('/:id/access', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { accessControl } = req.body;
+  if (!accessControl) {
+    res.status(400).json({ error: 'accessControl object is required' });
+    return;
+  }
+
+  try {
+    const check = await query(
+      'SELECT id, case_number, metadata FROM investigations WHERE id::text = $1 OR case_number = $1',
+      [req.params.id]
+    );
+
+    if (check.rows.length === 0) {
+      res.status(404).json({ error: 'Investigation not found' });
+      return;
+    }
+
+    const currentMeta = check.rows[0].metadata || {};
+    const updatedMeta = {
+      ...currentMeta,
+      access_control: {
+        ...accessControl,
+        updated_at: new Date().toISOString(),
+        updated_by: req.user?.id,
+        updated_by_name: req.user?.fullName || req.user?.username,
+      },
+    };
+
+    const result = await query(
+      `UPDATE investigations 
+       SET metadata = $1, updated_at = NOW() 
+       WHERE id = $2 
+       RETURNING id, case_number, metadata, updated_at`,
+      [JSON.stringify(updatedMeta), check.rows[0].id]
+    );
+
+    await logAction(
+      req.user?.id,
+      req.user?.username,
+      'UPDATE_INVESTIGATION_ACCESS',
+      'investigation',
+      check.rows[0].id,
+      `Updated access control for case ${check.rows[0].case_number} (Classification: ${accessControl.classification || 'UNSPECIFIED'})`,
+      req.ip || '',
+      req.headers['user-agent'] || '',
+      'success',
+      { accessControl }
+    );
+
+    res.json({
+      message: 'Access control updated successfully',
+      investigationId: check.rows[0].id,
+      accessControl: result.rows[0].metadata?.access_control,
+    });
+  } catch (error) {
+    logger.error('Update investigation access error:', error);
+    res.status(500).json({ error: 'Failed to update investigation access control' });
   }
 });
+
 
 // POST /api/investigations/:id/entities
 router.post('/:id/entities', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
