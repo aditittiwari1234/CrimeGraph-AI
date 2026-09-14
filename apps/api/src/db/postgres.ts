@@ -224,6 +224,7 @@ async function runMigrations(client: PoolClient): Promise<void> {
     ALTER TABLE investigations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
     ALTER TABLE alerts ADD COLUMN IF NOT EXISTS severity VARCHAR(20);
     ALTER TABLE alerts ADD COLUMN IF NOT EXISTS entity_id VARCHAR(255);
+    ALTER TABLE evidence_ledger ADD COLUMN IF NOT EXISTS investigation_id VARCHAR(64);
   `);
 
   // Indexes
@@ -236,6 +237,7 @@ async function runMigrations(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_evidence_ledger_evidence_id ON evidence_ledger(evidence_id);
+    CREATE INDEX IF NOT EXISTS idx_evidence_ledger_inv ON evidence_ledger(investigation_id);
     CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
   `);
 

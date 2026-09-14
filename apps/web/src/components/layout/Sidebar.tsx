@@ -43,7 +43,7 @@ export default function Sidebar() {
   const isInvestigationDetail = Boolean(investigationMatch);
   const investigationId = investigationMatch
     ? decodeURIComponent(investigationMatch[1])
-    : location.pathname === '/network'
+    : ['/network', '/documents', '/evidence', '/timeline', '/data-sources', '/ai-assistant'].includes(location.pathname)
       ? new URLSearchParams(location.search).get('investigation')
       : null;
   const currentInvestigationTab = new URLSearchParams(location.search).get('tab') || 'overview';
@@ -51,13 +51,12 @@ export default function Sidebar() {
   const investigationItems = investigationId ? [
     { path: `/investigations/${encodeURIComponent(investigationId)}?tab=overview`, label: 'Overview', icon: FolderOpen },
     { path: `/investigations/${encodeURIComponent(investigationId)}?tab=entities`, label: 'Entities', icon: Users },
+    { path: `/investigations/${encodeURIComponent(investigationId)}?tab=sources`, label: 'Sources', icon: FileText },
+    { path: `/investigations/${encodeURIComponent(investigationId)}?tab=evidence`, label: 'Evidence', icon: Shield },
     { path: `/investigations/${encodeURIComponent(investigationId)}?tab=notes`, label: 'Notes', icon: FileText },
     { path: `/investigations/${encodeURIComponent(investigationId)}?tab=timeline`, label: 'Timeline', icon: Clock },
     { path: `/network?investigation=${encodeURIComponent(investigationId)}`, label: 'Network Graph', icon: Network },
-    { path: '/documents', label: 'Sources', icon: FileText },
-    { path: '/alerts', label: 'Alerts', icon: Bell },
-    { path: '/evidence', label: 'Evidence', icon: Shield },
-    { path: '/ai-assistant', label: 'AI Assistant', icon: Bot },
+    { path: `/ai-assistant?investigation=${encodeURIComponent(investigationId)}`, label: 'AI Assistant', icon: Bot },
   ] : [];
 
   const grouped = sections.map(s => ({
