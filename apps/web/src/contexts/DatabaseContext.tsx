@@ -99,6 +99,33 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, [databases]);
 
+  // Load shared external databases from Neon internal database so all users can access them
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchSources() {
+      try {
+        const res = await fetch('/api/database/sources');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.success && Array.isArray(json.sources) && isMounted) {
+          if (json.sources.length > 0) {
+            setDatabases(json.sources);
+            setActiveDatabaseIdState(prev => {
+              const exists = json.sources.some((s: DatabaseConnection) => s.id === prev);
+              if (exists) return prev;
+              const defaultDb = json.sources.find((s: DatabaseConnection) => s.isDefault) || json.sources[0];
+              return defaultDb.id;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch shared databases from server:', err);
+      }
+    }
+    fetchSources();
+    return () => { isMounted = false; };
+  }, []);
+
   const setActiveDatabaseId = useCallback((id: string) => {
     setActiveDatabaseIdState(id);
     try {
@@ -182,23 +209,32 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     setDatabases(prev => [newDb, ...prev]);
     setActiveDatabaseId(newDb.id);
 
-    // Fetch real live row count from database
+    // 1. Fetch real live row count from database
+    let totalRecords = 0;
     try {
       const uri = newDb.connectionUri || (newDb.host.startsWith('postgres') || newDb.host.startsWith('mongodb') ? newDb.host : '');
       const isMongo = newDb.type === 'mongodb' || uri.startsWith('mongodb');
       const endpoint = isMongo ? '/api/database/mongo-data' : '/api/database/live-data';
       const dbParam = newDb.databaseName ? `&db=${encodeURIComponent(newDb.databaseName)}` : '';
       const uriParam = uri ? `?uri=${encodeURIComponent(uri)}${dbParam}` : '';
-      fetch(`${endpoint}${uriParam}`)
-        .then(res => res.json())
-        .then(json => {
-          if (json.success && json.counts) {
-            const total = Object.values(json.counts as Record<string, number>).reduce((a, b) => a + b, 0);
-            setDatabases(prev => prev.map(d => d.id === newDb.id ? { ...d, recordCount: total } : d));
-          }
-        })
-        .catch(() => {});
+      const res = await fetch(`${endpoint}${uriParam}`);
+      const json = await res.json();
+      if (json.success && json.counts) {
+        totalRecords = Object.values(json.counts as Record<string, number>).reduce((a, b) => a + b, 0);
+        setDatabases(prev => prev.map(d => d.id === newDb.id ? { ...d, recordCount: totalRecords } : d));
+      }
     } catch {}
+
+    // 2. Persist safely to internal Neon database so all users across the app can access it
+    try {
+      await fetch('/api/database/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newDb, recordCount: totalRecords }),
+      });
+    } catch (err) {
+      console.warn('Failed to persist external database to internal database:', err);
+    }
 
     return newDb;
   }, [setActiveDatabaseId]);
@@ -212,6 +248,11 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       }
       return filtered;
     });
+
+    // Remove from internal Neon DB
+    fetch(`/api/database/sources/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(err => {
+      console.warn('Failed to delete external database from server:', err);
+    });
   }, [activeDatabaseId, setActiveDatabaseId]);
 
   const clearAllDatabases = useCallback(() => {
@@ -221,6 +262,11 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(ACTIVE_DB_KEY);
     } catch {}
+
+    // Clear from internal Neon DB
+    fetch('/api/database/sources', { method: 'DELETE' }).catch(err => {
+      console.warn('Failed to clear external databases from server:', err);
+    });
   }, [setActiveDatabaseId]);
 
   const syncDatabase = useCallback(async (id: string) => {

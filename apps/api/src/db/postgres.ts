@@ -4,8 +4,11 @@ import { logger } from '../utils/logger';
 let pool: Pool;
 
 export async function initPostgres(): Promise<void> {
+  const rawUrl = process.env.DATABASE_URL || '';
+  const sanitizedUrl = rawUrl.replace(/([?&])channel_binding=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '');
+
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: sanitizedUrl || undefined,
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432', 10),
     database: process.env.DB_NAME || 'crimegraph_db',
@@ -13,8 +16,8 @@ export async function initPostgres(): Promise<void> {
     password: process.env.DB_PASSWORD || 'crimegraph_dev',
     max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 15000,
-    ssl: process.env.DB_SSL === 'true' || process.env.DATABASE_URL?.includes('sslmode=') ? { rejectUnauthorized: false } : undefined,
+    connectionTimeoutMillis: 30000,
+    ssl: process.env.DB_SSL === 'true' || sanitizedUrl.includes('sslmode=') ? { rejectUnauthorized: false } : undefined,
   });
 
   const client = await pool.connect();
@@ -64,7 +67,7 @@ async function runMigrations(client: PoolClient): Promise<void> {
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS users (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      id VARCHAR(64) PRIMARY KEY,
       username VARCHAR(100) UNIQUE NOT NULL,
       email VARCHAR(255) UNIQUE NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
@@ -187,6 +190,30 @@ async function runMigrations(client: PoolClient): Promise<void> {
       content TEXT NOT NULL,
       entity_ref VARCHAR(255),
       is_pinned BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS external_data_sources (
+      id VARCHAR(64) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      type VARCHAR(50) NOT NULL,
+      host VARCHAR(500),
+      port INTEGER,
+      database_name VARCHAR(255),
+      username VARCHAR(255),
+      password VARCHAR(500),
+      connection_uri TEXT,
+      auth_type VARCHAR(50) DEFAULT 'password',
+      department VARCHAR(255) DEFAULT 'Intelligence Bureau',
+      classification VARCHAR(50) DEFAULT 'Secret',
+      status VARCHAR(50) DEFAULT 'connected',
+      record_count INTEGER DEFAULT 0,
+      latency_ms INTEGER DEFAULT 0,
+      is_default BOOLEAN DEFAULT false,
+      ssl_enabled BOOLEAN DEFAULT true,
+      description TEXT,
+      created_by VARCHAR(64) REFERENCES users(id),
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );

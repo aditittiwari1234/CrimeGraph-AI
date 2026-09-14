@@ -248,4 +248,136 @@ router.get('/live-data', async (req: Request, res: Response): Promise<void> => {
     }
   }
 });
+
+// GET /api/database/sources
+// Returns all registered external data sources stored safely in internal database
+router.get('/sources', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await query(
+      `SELECT * FROM external_data_sources ORDER BY created_at DESC`
+    );
+    const sources = result.rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      host: row.host || '',
+      port: row.port || undefined,
+      databaseName: row.database_name || undefined,
+      username: row.username || undefined,
+      password: row.password || undefined,
+      connectionUri: row.connection_uri || undefined,
+      authType: row.auth_type || 'password',
+      department: row.department || 'Intelligence Bureau',
+      classification: row.classification || 'Secret',
+      status: row.status || 'connected',
+      recordCount: parseInt(row.record_count || '0', 10),
+      latencyMs: parseInt(row.latency_ms || '0', 10),
+      lastPing: 'Live Synchronized',
+      isDefault: Boolean(row.is_default),
+      sslEnabled: Boolean(row.ssl_enabled),
+      description: row.description || '',
+      createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+    }));
+    res.json({ success: true, sources });
+  } catch (error: any) {
+    logger.error('Error fetching external data sources:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/database/sources
+// Registers or updates an external data source in the internal Neon database
+router.post('/sources', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const body = req.body;
+    const id = body.id || `db-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const name = body.name || 'External Database';
+    const type = body.type || 'postgres';
+    const host = body.host || '';
+    const port = body.port || null;
+    const databaseName = body.databaseName || null;
+    const username = body.username || null;
+    const password = body.password || null;
+    const connectionUri = body.connectionUri || null;
+    const authType = body.authType || 'password';
+    const department = body.department || 'Intelligence Bureau';
+    const classification = body.classification || 'Secret';
+    const status = body.status || 'connected';
+    const recordCount = body.recordCount || 0;
+    const latencyMs = body.latencyMs || 15;
+    const isDefault = Boolean(body.isDefault);
+    const sslEnabled = body.sslEnabled !== false;
+    const description = body.description || '';
+
+    await query(
+      `INSERT INTO external_data_sources (
+        id, name, type, host, port, database_name, username, password,
+        connection_uri, auth_type, department, classification, status,
+        record_count, latency_ms, is_default, ssl_enabled, description, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        type = EXCLUDED.type,
+        host = EXCLUDED.host,
+        port = EXCLUDED.port,
+        database_name = EXCLUDED.database_name,
+        username = EXCLUDED.username,
+        password = EXCLUDED.password,
+        connection_uri = EXCLUDED.connection_uri,
+        auth_type = EXCLUDED.auth_type,
+        department = EXCLUDED.department,
+        classification = EXCLUDED.classification,
+        status = EXCLUDED.status,
+        record_count = EXCLUDED.record_count,
+        latency_ms = EXCLUDED.latency_ms,
+        is_default = EXCLUDED.is_default,
+        ssl_enabled = EXCLUDED.ssl_enabled,
+        description = EXCLUDED.description,
+        updated_at = NOW()`,
+      [
+        id, name, type, host, port, databaseName, username, password,
+        connectionUri, authType, department, classification, status,
+        recordCount, latencyMs, isDefault, sslEnabled, description
+      ]
+    );
+
+    res.json({
+      success: true,
+      source: {
+        id, name, type, host, port, databaseName, username, connectionUri,
+        authType, department, classification, status, recordCount, latencyMs,
+        isDefault, sslEnabled, description, createdAt: new Date().toISOString()
+      }
+    });
+  } catch (error: any) {
+    logger.error('Error saving external data source:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/database/sources/:id
+// Removes an external data source from the internal database
+router.delete('/sources/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM external_data_sources WHERE id = $1', [id]);
+    res.json({ success: true, id });
+  } catch (error: any) {
+    logger.error('Error deleting external data source:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/database/sources
+// Clears all external data sources
+router.delete('/sources', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    await query('DELETE FROM external_data_sources');
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error clearing external data sources:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;
