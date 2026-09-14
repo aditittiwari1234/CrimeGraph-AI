@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Database, Search, Filter, Download, FileText, Phone, CreditCard,
   Truck, Building2, Eye, MapPin, AlertTriangle, CheckCircle2,
-  ChevronRight, ExternalLink, RefreshCw, X, Users, ArrowUpDown
+  ChevronRight, ExternalLink, RefreshCw, X, Users, ArrowUpDown, Plus
 } from 'lucide-react';
 import {
   FIR_RECORDS, CDR_RECORDS, TRANSACTIONS, VEHICLES,
@@ -13,11 +13,14 @@ import {
   type Vehicle, type Organisation, type Account,
   type SurveillanceReport, type Location, type Person
 } from '../data/dataset';
+import DatabaseSelector from '../components/database/DatabaseSelector';
+import { useDatabases } from '../contexts/DatabaseContext';
 
 type TabKey = 'fir' | 'cdr' | 'financial' | 'vehicles' | 'organisations' | 'accounts' | 'surveillance' | 'locations' | 'persons';
 
 export default function DatabasePage() {
   const navigate = useNavigate();
+  const { activeDatabase, setIsAddModalOpen } = useDatabases();
   const [activeTab, setActiveTab] = useState<TabKey>('fir');
   const [search, setSearch] = useState('');
   const [flaggedOnly, setFlaggedOnly] = useState(false);
@@ -170,6 +173,9 @@ export default function DatabasePage() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', paddingBottom: 48 }}>
+      {/* Database Context Switcher Bar */}
+      <DatabaseSelector />
+
       {/* Header Banner */}
       <div style={{
         background: '#ffffff',
@@ -204,7 +210,7 @@ export default function DatabasePage() {
                 padding: '4px 8px',
                 borderRadius: 6
               }}>
-                Role: Administrator Access
+                Active DB: {activeDatabase.name}
               </span>
             </div>
             <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', margin: '4px 0 6px' }}>
@@ -212,18 +218,26 @@ export default function DatabasePage() {
             </h1>
             <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0, maxWidth: 850 }}>
               Direct unified query access to all ingested records across police FIRs, cellular communication logs (CDR),
-              financial intelligence, vehicle registries, corporate filings, and surveillance transcripts.
+              financial intelligence, vehicle registries, corporate filings, and surveillance transcripts in <strong>{activeDatabase.name}</strong>.
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="btn btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
+            >
+              <Plus size={15} color="#2563eb" />
+              + Add Database
+            </button>
             <button
               onClick={() => navigate('/data-sources')}
               className="btn btn-secondary"
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
             >
               <ExternalLink size={15} />
-              Multi-Dept Data Sources
+              Multi-Dept Integrations
             </button>
             <button
               onClick={handleExport}

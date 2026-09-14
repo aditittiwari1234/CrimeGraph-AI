@@ -7,6 +7,8 @@ import {
   Plus, Check, X, Server
 } from 'lucide-react';
 import { ENTITY_COUNTS } from '../data/dataset';
+import DatabaseSelector from '../components/database/DatabaseSelector';
+import { useDatabases } from '../contexts/DatabaseContext';
 
 interface DataSource {
   id: string;
@@ -27,6 +29,7 @@ interface DataSource {
 
 export default function DataSourcesPage() {
   const navigate = useNavigate();
+  const { setIsAddModalOpen } = useDatabases();
   const [sources, setSources] = useState<DataSource[]>([
     {
       id: 'cctns',
@@ -164,6 +167,9 @@ export default function DataSourcesPage() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', paddingBottom: 48 }}>
+      {/* Active Database Context Switcher */}
+      <DatabaseSelector />
+
       {/* Header Banner */}
       <div style={{
         background: '#ffffff',
@@ -210,7 +216,15 @@ export default function DataSourcesPage() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="btn btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
+            >
+              <Plus size={15} color="#2563eb" />
+              + Connect Database
+            </button>
             <button
               onClick={() => navigate('/database')}
               className="btn btn-secondary"
@@ -224,8 +238,8 @@ export default function DataSourcesPage() {
               className="btn btn-primary"
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
             >
-              <Plus size={15} />
-              Ingest External Dataset
+              <Upload size={15} />
+              Ingest External Records
             </button>
           </div>
         </div>

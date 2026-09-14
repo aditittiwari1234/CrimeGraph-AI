@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Bell, LogOut, Shield } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
+import DatabaseSelector from '../database/DatabaseSelector';
 
 interface SearchResult {
   id: string;
@@ -124,6 +125,9 @@ export default function Topbar() {
       </div>
 
       <div className="topbar-right">
+        {/* Database Switcher */}
+        <DatabaseSelector compact />
+
         {/* Classification marker */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
