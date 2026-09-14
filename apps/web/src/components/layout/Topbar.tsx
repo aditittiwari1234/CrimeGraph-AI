@@ -157,32 +157,39 @@ export default function Topbar() {
           </span>
           <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
           <span
+            onClick={() => navigate('/entities')}
+            style={{
+              color: nodeColors[entityType] || '#2563eb',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+            }}
+            title={`View all ${entityType} entities`}
+          >
+            {entityType}
+          </span>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
+          <span
             onClick={() => navigate(`/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?tab=details`)}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 7,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
               color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 700,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               cursor: 'pointer',
             }}
             title={`View ${entityName || entityId}`}
           >
-            <span
-              style={{
-                fontSize: '0.65rem',
-                padding: '2px 7px',
-                borderRadius: 4,
-                background: `${nodeColors[entityType] || '#2563eb'}18`,
-                color: nodeColors[entityType] || '#2563eb',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-              }}
-            >
-              {entityType}
-            </span>
-            <span style={{ fontWeight: 700 }}>{entityName || entityId}</span>
-            <span className="font-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 500 }}>
-              ({entityId})
-            </span>
+            {entityName && entityName !== entityId ? (
+              <>
+                <span>{entityName}</span>
+                <span className="font-mono" style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600 }}>
+                  ({entityId})
+                </span>
+              </>
+            ) : (
+              <span className="font-mono">{entityId}</span>
+            )}
           </span>
           <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
           <span style={{ color: nodeColors[entityType] || '#2563eb', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
