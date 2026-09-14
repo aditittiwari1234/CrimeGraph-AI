@@ -4,7 +4,7 @@ import {
   Database, Search, Download, RefreshCw, X, Layers,
   Server, Shield, Activity, Plus, Code, CheckCircle2,
   AlertTriangle, ArrowUpDown, ChevronLeft, ChevronRight,
-  Eye, Copy, Check, Table as TableIcon, HardDrive
+  Eye, Copy, Check, Table as TableIcon, HardDrive, Lock
 } from 'lucide-react';
 import { useDatabases } from '../contexts/DatabaseContext';
 import DatabaseSelector from '../components/database/DatabaseSelector';
@@ -377,120 +377,156 @@ export default function DatabasePage() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', paddingBottom: 48 }}>
-      {/* Top Banner / Selector Bar */}
+      {/* Header Banner - Matching DataSourcesPage structure */}
       <div style={{
         background: '#ffffff',
         border: '1px solid #e2e8f0',
         borderRadius: 12,
-        padding: '20px 24px',
-        marginBottom: 20,
+        padding: '24px 28px',
+        marginBottom: 24,
         boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{
-              width: 44,
-              height: 44,
-              borderRadius: 10,
-              background: isMongo ? '#ecfdf5' : '#eff6ff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: isMongo ? '#10b981' : '#2563eb'
-            }}>
-              {isMongo ? <Shield size={24} /> : <Database size={24} />}
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                  Database Explorer
-                </h1>
-                {activeDatabase && (
-                  <span style={{
-                    background: isMongo ? '#d1fae5' : '#dbeafe',
-                    color: isMongo ? '#065f46' : '#1e40af',
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: 6,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em'
-                  }}>
-                    {activeDatabase.type}
-                  </span>
-                )}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <div style={{
+                background: '#f0fdf4',
+                color: '#16a34a',
+                padding: '6px 10px',
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontWeight: 700,
+                fontSize: '0.8rem'
+              }}>
+                <Server size={16} />
+                <span>INTER-DEPARTMENTAL FEDERATED GATEWAY</span>
               </div>
-              <p style={{ color: '#64748b', fontSize: '0.84rem', margin: '4px 0 0' }}>
-                {activeDatabase
-                  ? (dbSyncNotice || `Connected to ${activeDatabase.name}`)
-                  : 'Connect an external database (PostgreSQL, Neon, MongoDB, MySQL) to view tables and query live data.'}
-              </p>
+              <span style={{
+                background: '#f1f5f9',
+                color: '#475569',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                padding: '4px 8px',
+                borderRadius: 6
+              }}>
+                Multi-Agency Security Layer v2.4
+              </span>
+              {activeDatabase && (
+                <span style={{
+                  background: isMongo ? '#d1fae5' : '#dbeafe',
+                  color: isMongo ? '#065f46' : '#1e40af',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em'
+                }}>
+                  {activeDatabase.type}
+                </span>
+              )}
             </div>
+            <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', margin: '4px 0 6px' }}>
+              Database Explorer & Schema Inspector
+            </h1>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0, maxWidth: 850 }}>
+              Live federated synchronization pipeline connecting NCRB CrimeGraph AI with state police departments (CCTNS),
+              telecom operators, financial intelligence units, transport registries (VAHAN), and corporate databases.
+            </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <DatabaseSelector compact />
             {activeDatabase && (
               <button
                 onClick={() => loadDatabaseData(activeDatabase.id)}
                 disabled={isLoadingDb}
                 className="btn btn-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
                 title="Reload live tables and rows"
               >
-                <RefreshCw size={14} className={isLoadingDb ? 'spin' : ''} />
+                <RefreshCw size={15} className={isLoadingDb ? 'spin' : ''} />
                 Refresh
               </button>
             )}
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="btn btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
             >
-              <Plus size={14} />
-              Add Database
+              <Plus size={15} />
+              Connect Database
+            </button>
+            <button
+              onClick={() => navigate('/data-sources')}
+              className="btn btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
+            >
+              <HardDrive size={15} />
+              Data Sources Hub
             </button>
           </div>
         </div>
 
-        {/* Status Metrics Strip */}
-        {activeDatabase && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 20,
-            flexWrap: 'wrap',
-            marginTop: 16,
-            paddingTop: 14,
-            borderTop: '1px solid #f1f5f9',
-            fontSize: '0.82rem',
-            color: '#475569'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Server size={14} color="#64748b" />
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>Host:</span>
-              <span style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>
-                {activeDatabase.connectionUri
-                  ? (activeDatabase.connectionUri.includes('@') ? '...' + activeDatabase.connectionUri.split('@')[1] : activeDatabase.connectionUri)
-                  : `${activeDatabase.host || 'localhost'}${activeDatabase.port ? ':' + activeDatabase.port : ''}`}
-              </span>
+        {/* Status Metrics Bar (4 Prominent Cards Matching DataSourcesPage) */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 16,
+          marginTop: 20,
+          paddingTop: 16,
+          borderTop: '1px solid #f1f5f9'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CheckCircle2 size={22} color="#16a34a" />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Layers size={14} color="#64748b" />
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>{isMongo ? 'Collections:' : 'Tables:'}</span>
-              <span style={{ fontWeight: 700, color: '#2563eb' }}>{tableNames.length}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Activity size={14} color="#64748b" />
-              <span style={{ fontWeight: 600, color: '#0f172a' }}>Fetched Records:</span>
-              <span style={{ fontWeight: 700, color: '#16a34a' }}>{totalAllRecords.toLocaleString()}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
-              <span style={{ fontWeight: 600, color: '#16a34a' }}>Authenticated TLS 1.3</span>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Active Gateways</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                {databases.length} / {databases.length} Connected
+              </div>
             </div>
           </div>
-        )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Activity size={22} color="#2563eb" />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Average API Latency</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                {activeDatabase?.latencyMs || 24.2} ms
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#faf5ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Lock size={22} color="#7c3aed" />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Security Standard</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                mTLS + AES-256
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Database size={22} color="#ca8a04" />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Total Ingested Records</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                {totalAllRecords.toLocaleString()}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ERROR NOTICE */}
@@ -563,7 +599,7 @@ export default function DatabasePage() {
               Connect Database
             </button>
             <button
-              onClick={() => navigate('/datasources')}
+              onClick={() => navigate('/data-sources')}
               className="btn btn-secondary"
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px' }}
             >

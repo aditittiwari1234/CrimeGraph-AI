@@ -126,7 +126,7 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
             display: 'flex',
             alignItems: 'center',
             gap: 7,
-            padding: '6px 12px',
+            padding: '7px 12px',
             background: '#eff6ff',
             border: '1px solid #bfdbfe',
             borderRadius: 8,

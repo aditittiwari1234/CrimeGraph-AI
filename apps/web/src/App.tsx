@@ -56,6 +56,7 @@ export default function App() {
             <Route path="audit" element={<AuditLogsPage />} />
             <Route path="database" element={<DatabasePage />} />
             <Route path="data-sources" element={<DataSourcesPage />} />
+            <Route path="datasources" element={<Navigate to="/data-sources" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
