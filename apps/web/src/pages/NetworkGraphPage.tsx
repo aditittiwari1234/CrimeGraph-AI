@@ -1,0 +1,699 @@
+import { useEffect, useRef, useState, useCallback } from 'react';
+import cytoscape from 'cytoscape';
+import type { Core, NodeSingular } from 'cytoscape';
+import {
+  Search, ZoomIn, ZoomOut, Maximize2, RefreshCw, Filter,
+  Download, Info, X, ChevronRight, Loader, Network, GitBranch
+} from 'lucide-react';
+import api from '../lib/api';
+
+interface GraphNode {
+  id: string;
+  nodeType: string;
+  name?: string;
+  number?: string;
+  licensePlate?: string;
+  accountNumber?: string;
+  [key: string]: unknown;
+}
+
+interface GraphEdge {
+  id?: string;
+  source: string;
+  target: string;
+  type: string;
+  confidence?: number;
+  timestamp?: string;
+  relSource?: string;
+  recordRef?: string;
+}
+
+const NODE_COLORS: Record<string, string> = {
+  Person: '#3b82f6',
+  Phone: '#22c55e',
+  Vehicle: '#f97316',
+  Organization: '#8b5cf6',
+  Location: '#ef4444',
+  Account: '#eab308',
+  Case: '#06b6d4',
+  Event: '#ec4899',
+};
+
+const NODE_SHAPES: Record<string, string> = {
+  Person: 'ellipse',
+  Phone: 'round-rectangle',
+  Vehicle: 'diamond',
+  Organization: 'hexagon',
+  Location: 'star',
+  Account: 'rectangle',
+  Case: 'octagon',
+  Event: 'vee',
+};
+
+const NODE_ICONS: Record<string, string> = {
+  Person: '👤', Phone: '📱', Vehicle: '🚗',
+  Organization: '🏢', Location: '📍', Account: '💳',
+  Case: '📋', Event: '📅',
+};
+
+function getNodeLabel(node: GraphNode): string {
+  return (node.name || node.number || node.licensePlate || node.accountNumber || node.id || '').substring(0, 20);
+}
+
+export default function NetworkGraphPage() {
+  const cyRef = useRef<HTMLDivElement>(null);
+  const cyInstance = useRef<Core | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [entityType, setEntityType] = useState('');
+  const [nodeCount, setNodeCount] = useState(0);
+  const [edgeCount, setEdgeCount] = useState(0);
+  const [filterTypes, setFilterTypes] = useState<Set<string>>(new Set());
+  const [pathMode, setPathMode] = useState(false);
+  const [pathNodes, setPathNodes] = useState<GraphNode[]>([]);
+  const [pathLoading, setPathLoading] = useState(false);
+  const [pathResult, setPathResult] = useState<Record<string, unknown>[] | null>(null);
+
+  const initCytoscape = useCallback(() => {
+    if (!cyRef.current) return;
+
+    if (cyInstance.current) {
+      cyInstance.current.destroy();
+    }
+
+    const cy = cytoscape({
+      container: cyRef.current,
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'background-color': (ele: NodeSingular) => NODE_COLORS[ele.data('nodeType')] || '#64748b',
+            'shape': (ele: NodeSingular) => (NODE_SHAPES[ele.data('nodeType')] || 'ellipse') as any,
+            'label': 'data(label)',
+            'color': '#1e293b',
+            'font-size': '10px',
+            'font-family': 'Inter, sans-serif',
+            'font-weight': '600',
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'text-margin-y': '4px',
+            'width': 36,
+            'height': 36,
+            'border-width': 3,
+            'border-color': 'white',
+            'border-opacity': 1,
+            'text-outline-width': 2,
+            'text-outline-color': '#f0f4f8',
+            'text-max-width': '90px',
+            'text-wrap': 'ellipsis',
+            'overlay-padding': '4px',
+            'box-shadow': '0 2px 8px rgba(0,0,0,0.15)',
+          },
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 4,
+            'border-color': '#1e293b',
+            'width': 44,
+            'height': 44,
+          },
+        },
+        {
+          selector: 'node.highlighted',
+          style: {
+            'border-width': 4,
+            'border-color': '#f59e0b',
+          },
+        },
+        {
+          selector: 'node.dimmed',
+          style: { 'opacity': 0.2 },
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': 1.5,
+            'line-color': '#94a3b8',
+            'target-arrow-color': '#94a3b8',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': 'data(label)',
+            'color': '#475569',
+            'font-size': '9px',
+            'font-weight': '500',
+            'text-background-color': '#f0f4f8',
+            'text-background-opacity': 0.9,
+            'text-background-padding': '2px',
+            'edge-text-rotation': 'autorotate',
+            'opacity': 0.8,
+          },
+        },
+        {
+          selector: 'edge:selected',
+          style: {
+            'line-color': '#2563eb',
+            'target-arrow-color': '#2563eb',
+            'width': 2.5,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.path-highlight',
+          style: {
+            'line-color': '#f59e0b',
+            'target-arrow-color': '#f59e0b',
+            'width': 3,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.dimmed',
+          style: { 'opacity': 0.08 },
+        },
+      ],
+      layout: { name: 'cose', randomize: true, animate: false } as any,
+      wheelSensitivity: 0.3,
+      minZoom: 0.1,
+      maxZoom: 5,
+    });
+
+    // Click on node
+    cy.on('tap', 'node', (evt) => {
+      const node = evt.target;
+      setSelectedNode(node.data());
+      setSelectedEdge(null);
+
+      if (pathMode) {
+        setPathNodes(prev => {
+          if (prev.length === 0) return [node.data()];
+          if (prev.length === 1) return [...prev, node.data()];
+          return [node.data()];
+        });
+      }
+
+      // Highlight neighbors
+      cy.elements().removeClass('highlighted dimmed');
+      const neighborhood = node.closedNeighborhood();
+      cy.elements().not(neighborhood).addClass('dimmed');
+      neighborhood.addClass('highlighted');
+    });
+
+    // Click on edge
+    cy.on('tap', 'edge', (evt) => {
+      setSelectedEdge(evt.target.data());
+      setSelectedNode(null);
+    });
+
+    // Click on background — clear selection
+    cy.on('tap', (evt) => {
+      if (evt.target === cy) {
+        setSelectedNode(null);
+        setSelectedEdge(null);
+        cy.elements().removeClass('highlighted dimmed');
+      }
+    });
+
+    cyInstance.current = cy;
+    return cy;
+  }, [pathMode]);
+
+  // Load demo network on mount
+  useEffect(() => {
+    const cy = initCytoscape();
+    if (!cy) return;
+    loadDemoNetwork(cy);
+  }, []);
+
+  const loadDemoNetwork = async (cy?: Core) => {
+    const instance = cy || cyInstance.current;
+    if (!instance) return;
+    setLoading(true);
+
+    try {
+      const res = await api.get('/api/entities/Person/P001/network?depth=2&limit=80');
+      const { nodes, edges } = res.data;
+      renderGraph(instance, nodes, edges);
+    } catch {
+      // Use synthetic demo data
+      renderDemoGraph(instance);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderGraph = (cy: Core, nodes: GraphNode[], edges: GraphEdge[]) => {
+    cy.elements().remove();
+
+    const cyNodes = nodes.map(n => ({
+      data: {
+        id: n.id,
+        label: getNodeLabel(n),
+        nodeType: n.nodeType,
+        ...n,
+      },
+    }));
+
+    const cyEdges = edges.map((e, i) => ({
+      data: {
+        id: e.id || `e-${i}`,
+        source: e.source,
+        target: e.target,
+        label: e.type?.replace(/_/g, ' '),
+        type: e.type,
+        confidence: e.confidence,
+        timestamp: e.timestamp,
+        relSource: e.relSource,
+        recordRef: e.recordRef,
+      },
+    }));
+
+    cy.add([...cyNodes, ...cyEdges]);
+
+    cy.layout({
+      name: 'cose',
+      randomize: true,
+      animate: true,
+      animationDuration: 800,
+      componentSpacing: 100,
+      nodeRepulsion: () => 8000,
+      idealEdgeLength: () => 100,
+      edgeElasticity: () => 100,
+    } as any).run();
+
+    setNodeCount(cyNodes.length);
+    setEdgeCount(cyEdges.length);
+  };
+
+  const renderDemoGraph = (cy: Core) => {
+    const demoNodes: GraphNode[] = [
+      { id: 'P001', nodeType: 'Person', name: 'Arjun Mehta' },
+      { id: 'P002', nodeType: 'Person', name: 'Vikram Sinha' },
+      { id: 'P003', nodeType: 'Person', name: 'Ramesh Gupta' },
+      { id: 'P009', nodeType: 'Person', name: 'Ravi Kumar' },
+      { id: 'P007', nodeType: 'Person', name: 'Suresh Yadav' },
+      { id: 'P014', nodeType: 'Person', name: 'Ajay Singh' },
+      { id: 'P016', nodeType: 'Person', name: 'Alok Trivedi' },
+      { id: 'P024', nodeType: 'Person', name: 'Girish Pandey' },
+      { id: 'PH001', nodeType: 'Phone', name: '9876543210' },
+      { id: 'PH010', nodeType: 'Phone', name: '8987654321' },
+      { id: 'V001', nodeType: 'Vehicle', name: 'MH02AB1234' },
+      { id: 'O001', nodeType: 'Organization', name: 'Shree Trading Co.' },
+      { id: 'O002', nodeType: 'Organization', name: 'Apex Logistics' },
+      { id: 'ACC001', nodeType: 'Account', name: 'ACC-MH-001' },
+      { id: 'ACC011', nodeType: 'Account', name: 'ACC-SHELL-011' },
+      { id: 'L001', nodeType: 'Location', name: 'Kanpur Central' },
+      { id: 'L002', nodeType: 'Location', name: 'Lotus Hotel, Mumbai' },
+      { id: 'CASE001', nodeType: 'Case', name: 'FIR-2026-00451' },
+      { id: 'EVT001', nodeType: 'Event', name: 'Kanpur Meeting' },
+    ];
+
+    const demoEdges = [
+      { source: 'P001', target: 'P002', type: 'ASSOCIATED_WITH', confidence: 0.89 },
+      { source: 'P001', target: 'P003', type: 'ASSOCIATED_WITH', confidence: 0.82 },
+      { source: 'P001', target: 'PH001', type: 'OWNS', confidence: 0.99 },
+      { source: 'P001', target: 'V001', type: 'OWNS', confidence: 0.99 },
+      { source: 'P001', target: 'O001', type: 'WORKS_FOR', confidence: 0.91 },
+      { source: 'P001', target: 'ACC001', type: 'OWNS', confidence: 0.99 },
+      { source: 'P001', target: 'L001', type: 'LOCATED_AT', confidence: 0.85 },
+      { source: 'P001', target: 'L002', type: 'LOCATED_AT', confidence: 0.80 },
+      { source: 'P001', target: 'CASE001', type: 'APPEARED_IN_CASE', confidence: 0.90 },
+      { source: 'P001', target: 'EVT001', type: 'ATTENDED_EVENT', confidence: 0.80 },
+      { source: 'P002', target: 'O002', type: 'WORKS_FOR', confidence: 0.85 },
+      { source: 'P003', target: 'P007', type: 'CALLS', confidence: 0.97 },
+      { source: 'P009', target: 'PH010', type: 'OWNS', confidence: 0.99 },
+      { source: 'P009', target: 'P007', type: 'CALLS', confidence: 0.96 },
+      { source: 'P009', target: 'P001', type: 'CALLS', confidence: 0.95 },
+      { source: 'P014', target: 'P001', type: 'SHARED_CONTACT', confidence: 0.60 },
+      { source: 'P014', target: 'P024', type: 'ASSOCIATED_WITH', confidence: 0.80 },
+      { source: 'P016', target: 'O001', type: 'WORKS_FOR', confidence: 0.91 },
+      { source: 'ACC001', target: 'ACC011', type: 'FINANCIAL_TRANSACTION', confidence: 0.99 },
+      { source: 'P001', target: 'P016', type: 'CALLS', confidence: 0.96 },
+    ];
+
+    renderGraph(cy, demoNodes, demoEdges.map((e, i) => ({ ...e, id: `e${i}`, relSource: 'DEMO' })));
+  };
+
+  const handleSearch = async () => {
+    if (!searchTerm || !cyInstance.current) return;
+    setLoading(true);
+    try {
+      const res = await api.get(`/api/entities/search?q=${encodeURIComponent(searchTerm)}&type=${entityType}&limit=5`);
+      const entities = res.data.entities || [];
+      if (entities.length > 0) {
+        const first = entities[0];
+        const netRes = await api.get(`/api/entities/${first.nodeType}/${first.id}/network?depth=2&limit=60`);
+        renderGraph(cyInstance.current, netRes.data.nodes, netRes.data.edges);
+      }
+    } catch {
+      // No-op
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const expandNode = async (node: GraphNode) => {
+    if (!cyInstance.current || !node.nodeType) return;
+    setLoading(true);
+    try {
+      const res = await api.post('/api/graph/expand', { nodeId: node.id, nodeType: node.nodeType, limit: 20 });
+      const { nodes, edges } = res.data;
+      const existingIds = new Set(cyInstance.current.nodes().map((n: any) => n.id()));
+
+      const newNodes = nodes.filter((n: GraphNode) => !existingIds.has(n.id));
+      const newCyNodes = newNodes.map((n: GraphNode) => ({
+        data: { id: n.id, label: getNodeLabel(n), nodeType: n.nodeType, ...n },
+      }));
+      const newEdges = edges.map((e: GraphEdge, i: number) => ({
+        data: { id: e.id || `expand-${i}`, source: e.source, target: e.target, label: e.type?.replace(/_/g, ' '), ...e },
+      }));
+
+      cyInstance.current.add([...newCyNodes, ...newEdges]);
+      cyInstance.current.layout({ name: 'cose', randomize: false, animate: true, animationDuration: 600 } as any).run();
+      setNodeCount(cyInstance.current.nodes().length);
+      setEdgeCount(cyInstance.current.edges().length);
+    } catch {
+      // No-op
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const findPath = async () => {
+    if (pathNodes.length < 2) return;
+    setPathLoading(true);
+    try {
+      const [from, to] = pathNodes;
+      const res = await api.post('/api/graph/path', {
+        fromId: from.id, fromType: from.nodeType,
+        toId: to.id, toType: to.nodeType, maxHops: 6,
+      });
+      setPathResult(res.data.paths || []);
+
+      // Highlight path in graph
+      if (cyInstance.current && res.data.paths.length > 0) {
+        const pathNodeIds = new Set<string>();
+        res.data.paths[0].nodes?.forEach((n: any) => pathNodeIds.add(n.id));
+        cyInstance.current.elements().removeClass('path-highlight highlighted dimmed');
+        cyInstance.current.nodes().forEach((n: any) => {
+          if (!pathNodeIds.has(n.id())) n.addClass('dimmed');
+          else n.addClass('highlighted');
+        });
+        cyInstance.current.edges().addClass('dimmed');
+        cyInstance.current.edges().filter((e: any) =>
+          pathNodeIds.has(e.source().id()) && pathNodeIds.has(e.target().id())
+        ).removeClass('dimmed').addClass('path-highlight');
+      }
+    } catch {
+      // No-op
+    } finally {
+      setPathLoading(false);
+    }
+  };
+
+  const resetGraph = () => {
+    if (cyInstance.current) {
+      cyInstance.current.elements().removeClass('highlighted dimmed path-highlight');
+      cyInstance.current.fit(undefined, 40);
+    }
+    setPathNodes([]);
+    setPathResult(null);
+    setSelectedNode(null);
+    setSelectedEdge(null);
+  };
+
+  const exportGraph = () => {
+    if (!cyInstance.current) return;
+    const png = cyInstance.current.png({ output: 'blob', scale: 2, bg: '#080c18' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(png);
+    a.download = `crimegraph-network-${Date.now()}.png`;
+    a.click();
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - var(--topbar-height) - 48px)', gap: 12 }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Network size={18} color="var(--accent-primary)" />
+          <h2 style={{ fontSize: '1.1rem' }}>Network Graph</h2>
+        </div>
+
+        <div style={{ flex: 1, display: 'flex', gap: 8, maxWidth: 500 }}>
+          <select
+            className="form-select"
+            value={entityType}
+            onChange={e => setEntityType(e.target.value)}
+            style={{ width: 120 }}
+          >
+            <option value="">All Types</option>
+            {['Person', 'Phone', 'Vehicle', 'Organization', 'Location', 'Account', 'Case', 'Event'].map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <div className="search-input-wrapper" style={{ flex: 1 }}>
+            <Search size={14} className="search-icon" />
+            <input
+              type="text" className="form-input"
+              placeholder="Search entity to focus..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+            />
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={handleSearch}>Search</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+          {/* Path finder */}
+          <button
+            className={`btn btn-sm ${pathMode ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => { setPathMode(v => !v); setPathNodes([]); setPathResult(null); }}
+            title="Find shortest path between two nodes"
+          >
+            <GitBranch size={14} /> Path Finder
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={resetGraph} title="Reset view">
+            <RefreshCw size={14} />
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => cyInstance.current?.zoom({ level: cyInstance.current.zoom() * 1.2 })} title="Zoom in">
+            <ZoomIn size={14} />
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => cyInstance.current?.zoom({ level: cyInstance.current.zoom() * 0.8 })} title="Zoom out">
+            <ZoomOut size={14} />
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => cyInstance.current?.fit(undefined, 40)} title="Fit all">
+            <Maximize2 size={14} />
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={exportGraph} title="Export as PNG">
+            <Download size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Path finder bar */}
+      {pathMode && (
+        <div style={{
+          padding: '10px 14px', background: 'rgba(59,130,246,0.08)',
+          border: '1px solid rgba(59,130,246,0.2)', borderRadius: 10,
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <GitBranch size={14} color="var(--accent-primary)" />
+          <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+            Path Finder: Click on <strong>Node 1</strong> then <strong>Node 2</strong> in the graph to find the shortest path.
+          </span>
+          {pathNodes.map((n, i) => (
+            <span key={i} className="badge badge-info">
+              Node {i + 1}: {getNodeLabel(n)} ({n.nodeType})
+            </span>
+          ))}
+          {pathNodes.length === 2 && (
+            <button className="btn btn-primary btn-sm" onClick={findPath} disabled={pathLoading}>
+              {pathLoading ? <Loader size={14} className="loading-spinner" /> : 'Find Path'}
+            </button>
+          )}
+          {pathResult && (
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              {pathResult.length > 0 ? `✅ ${pathResult.length} path(s) found` : '❌ No path found'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Main graph area */}
+      <div style={{ flex: 1, display: 'flex', gap: 12, minHeight: 0 }}>
+        {/* Graph canvas */}
+        <div className="graph-container" style={{ flex: 1, position: 'relative' }}>
+          {loading && (
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 12,
+              background: 'rgba(8, 12, 24, 0.7)', zIndex: 10, borderRadius: 14,
+            }}>
+              <div className="loading-spinner" style={{ width: 40, height: 40, borderWidth: 3 }} />
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading network graph...</span>
+            </div>
+          )}
+
+          <div ref={cyRef} style={{ width: '100%', height: '100%' }} />
+
+          {/* Graph stats overlay */}
+          <div style={{
+            position: 'absolute', bottom: 12, left: 12,
+            display: 'flex', gap: 8, flexWrap: 'wrap',
+          }}>
+            <div style={{
+              padding: '4px 10px', background: 'rgba(255,255,255,0.92)',
+              border: '1px solid var(--border-primary)', borderRadius: 6,
+              fontSize: '0.72rem', color: 'var(--text-tertiary)',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              {nodeCount} nodes · {edgeCount} edges
+            </div>
+            <div className="ai-disclaimer" style={{ padding: '4px 10px', fontSize: '0.7rem' }}>
+              Graph shows analytical relationships — not proof of wrongdoing
+            </div>
+          </div>
+
+          {/* Node Legend */}
+          <div style={{
+            position: 'absolute', top: 12, left: 12,
+            background: 'rgba(255,255,255,0.95)', border: '1px solid var(--border-primary)',
+            borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 5,
+            boxShadow: 'var(--shadow-md)',
+          }}>
+            {Object.entries(NODE_COLORS).map(([type, color]) => (
+              <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: color, display: 'block', flexShrink: 0 }} />
+                {NODE_ICONS[type]} {type}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right panel — entity details */}
+        {(selectedNode || selectedEdge) && (
+          <div className="slide-in-right" style={{
+            width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12,
+            overflowY: 'auto', maxHeight: '100%',
+          }}>
+            {selectedNode && (
+              <div className="card" style={{ flex: 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: '1.2rem' }}>{NODE_ICONS[selectedNode.nodeType]}</span>
+                      <span className={`badge badge-${selectedNode.nodeType?.toLowerCase()}`}>{selectedNode.nodeType}</span>
+                    </div>
+                    <h3 style={{ fontSize: '1rem' }}>{getNodeLabel(selectedNode)}</h3>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setSelectedNode(null); if (cyInstance.current) cyInstance.current.elements().removeClass('highlighted dimmed'); }}>
+                    <X size={14} />
+                  </button>
+                </div>
+
+                {/* Entity properties */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {Object.entries(selectedNode)
+                    .filter(([k]) => !['id', 'nodeType', 'createdAt', 'communityId'].includes(k))
+                    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+                    .map(([k, v]) => (
+                      <div key={k} style={{ display: 'flex', gap: 8, fontSize: '0.8rem' }}>
+                        <span style={{ color: 'var(--text-muted)', textTransform: 'capitalize', width: 100, flexShrink: 0 }}>
+                          {k.replace(/([A-Z])/g, ' $1').toLowerCase()}
+                        </span>
+                        <span style={{ color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+                          {String(v).substring(0, 60)}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+
+                <div style={{ marginTop: 14, display: 'flex', gap: 6 }}>
+                  <button className="btn btn-primary btn-sm" onClick={() => expandNode(selectedNode)}>
+                    <ChevronRight size={12} /> Expand
+                  </button>
+                  <a
+                    href={`/entities/${selectedNode.nodeType}/${selectedNode.id}`}
+                    className="btn btn-secondary btn-sm"
+                    target="_blank"
+                  >
+                    <Info size={12} /> Full Profile
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {selectedEdge && (
+              <div className="card" style={{ flex: 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <h4 style={{ fontSize: '0.875rem' }}>Relationship Details</h4>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setSelectedEdge(null)}>
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{
+                    padding: '8px 10px', background: 'var(--bg-tertiary)',
+                    borderRadius: 6, textAlign: 'center', fontSize: '0.875rem',
+                    fontWeight: 600, color: 'var(--text-accent)',
+                  }}>
+                    {selectedEdge.type?.replace(/_/g, ' ')}
+                  </div>
+                  {[
+                    { label: 'Confidence', value: selectedEdge.confidence ? `${Math.round(Number(selectedEdge.confidence) * 100)}%` : '—' },
+                    { label: 'Timestamp', value: selectedEdge.timestamp ? new Date(selectedEdge.timestamp).toLocaleString('en-IN') : '—' },
+                    { label: 'Source', value: selectedEdge.relSource || '—' },
+                    { label: 'Record Ref', value: selectedEdge.recordRef || '—' },
+                  ].map(item => (
+                    <div key={item.label} style={{ display: 'flex', gap: 8, fontSize: '0.8rem' }}>
+                      <span style={{ color: 'var(--text-muted)', width: 90, flexShrink: 0 }}>{item.label}</span>
+                      <span style={{ color: 'var(--text-secondary)', fontFamily: item.label === 'Record Ref' ? 'var(--font-mono)' : undefined }}>
+                        {item.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="ai-disclaimer" style={{ marginTop: 10 }}>
+                  Relationship shown is based on recorded data. Does not imply criminal activity.
+                </div>
+              </div>
+            )}
+
+            {/* Path result panel */}
+            {pathResult && pathResult.length > 0 && (
+              <div className="card" style={{ flex: 'none' }}>
+                <h4 style={{ fontSize: '0.875rem', marginBottom: 10 }}>Path Analysis Results</h4>
+                {pathResult.map((path: any, i: number) => (
+                  <div key={i} style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
+                      Path {i + 1} ({path.length} hops):
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {path.nodes?.map((n: any, j: number) => (
+                        <span key={j} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <span className={`badge badge-${n.nodeType?.toLowerCase()}`} style={{ fontSize: '0.65rem' }}>
+                            {n.name || n.id}
+                          </span>
+                          {j < path.nodes.length - 1 && <ChevronRight size={10} color="var(--text-muted)" />}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="ai-disclaimer" style={{ marginTop: 6, fontSize: '0.72rem' }}>
+                      {path.disclaimer || 'Analytical lead — requires investigator review'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
