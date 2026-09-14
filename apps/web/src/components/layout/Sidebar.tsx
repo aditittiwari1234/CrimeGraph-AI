@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, FolderOpen, Network, Users, FileText,
   Bell, Clock, Bot, Shield, BookOpen, Activity, Database, Server,
@@ -38,6 +38,27 @@ const roleColors: Record<string, string> = {
 
 export default function Sidebar() {
   const { user } = useAuth();
+  const location = useLocation();
+  const investigationMatch = location.pathname.match(/^\/investigations\/([^/]+)$/);
+  const isInvestigationDetail = Boolean(investigationMatch);
+  const investigationId = investigationMatch
+    ? decodeURIComponent(investigationMatch[1])
+    : location.pathname === '/network'
+      ? new URLSearchParams(location.search).get('investigation')
+      : null;
+  const currentInvestigationTab = new URLSearchParams(location.search).get('tab') || 'overview';
+
+  const investigationItems = investigationId ? [
+    { path: `/investigations/${encodeURIComponent(investigationId)}?tab=overview`, label: 'Overview', icon: FolderOpen },
+    { path: `/investigations/${encodeURIComponent(investigationId)}?tab=entities`, label: 'Entities', icon: Users },
+    { path: `/investigations/${encodeURIComponent(investigationId)}?tab=notes`, label: 'Notes', icon: FileText },
+    { path: `/investigations/${encodeURIComponent(investigationId)}?tab=timeline`, label: 'Timeline', icon: Clock },
+    { path: `/network?investigation=${encodeURIComponent(investigationId)}`, label: 'Network Graph', icon: Network },
+    { path: '/documents', label: 'Sources', icon: FileText },
+    { path: '/alerts', label: 'Alerts', icon: Bell },
+    { path: '/evidence', label: 'Evidence', icon: Shield },
+    { path: '/ai-assistant', label: 'AI Assistant', icon: Bot },
+  ] : [];
 
   const grouped = sections.map(s => ({
     ...s,
@@ -86,7 +107,46 @@ export default function Sidebar() {
 
       {/* Nav */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
-        {grouped.map(section => (
+        {investigationId && (
+          <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #e2e8f0' }}>
+            <div style={{ padding: '10px 10px 4px', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#7c3aed' }}>
+              Current Investigation
+            </div>
+            <div style={{ padding: '4px 10px 8px', fontFamily: 'var(--font-mono)', fontSize: '0.7rem', fontWeight: 700, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {investigationId}
+            </div>
+            <NavLink
+              to="/investigations"
+              style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2, color: '#475569' }}
+            >
+              <FolderOpen size={15} style={{ color: '#94a3b8' }} />
+              <span>All Investigations</span>
+            </NavLink>
+            {investigationItems.map(item => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                style={({ isActive }) => {
+                  const itemTab = new URL(item.path, window.location.origin).searchParams.get('tab');
+                  const itemIsActive = itemTab ? isInvestigationDetail && currentInvestigationTab === itemTab : isActive;
+                  return {
+                    display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8,
+                    fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2,
+                    color: itemIsActive ? '#7c3aed' : '#475569', background: itemIsActive ? '#f5f3ff' : 'transparent',
+                    border: itemIsActive ? '1px solid #ddd6fe' : '1px solid transparent',
+                  };
+                }}
+              >
+                {({ isActive }) => {
+                  const itemTab = new URL(item.path, window.location.origin).searchParams.get('tab');
+                  const itemIsActive = itemTab ? isInvestigationDetail && currentInvestigationTab === itemTab : isActive;
+                  return <><item.icon size={15} style={{ color: itemIsActive ? '#7c3aed' : '#94a3b8' }} /><span>{item.label}</span></>;
+                }}
+              </NavLink>
+            ))}
+          </div>
+        )}
+        {!investigationId && grouped.map(section => (
           <div key={section.key} style={{ marginBottom: 4 }}>
             <div style={{
               padding: '10px 10px 4px',

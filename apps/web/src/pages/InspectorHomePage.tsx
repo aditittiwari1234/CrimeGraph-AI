@@ -108,7 +108,7 @@ export default function InspectorHomePage() {
           {cases.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No cases available.</p> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {cases.slice(0, 5).map(investigation => (
-                <button key={investigation.id} className="list-row" onClick={() => navigate(`/investigations/${investigation.id}`)}>
+                <button key={investigation.id} className="list-row" onClick={() => navigate(`/investigations/${investigation.case_number}`)}>
                   <span><strong>{investigation.title}</strong><small>{investigation.case_number} · {investigation.entity_count || 0} entities · {investigation.alert_count || 0} alerts</small></span>
                   <ChevronRight size={15} />
                 </button>

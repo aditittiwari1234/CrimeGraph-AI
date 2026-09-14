@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Bell, LogOut, Shield } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
@@ -17,10 +17,12 @@ interface SearchResult {
 export default function Topbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [caseNumber, setCaseNumber] = useState<string | null>(null);
 
   const handleSearch = async (q: string) => {
     setQuery(q);
@@ -51,9 +53,54 @@ export default function Topbar() {
     Case: '#06b6d4', Event: '#ec4899',
   };
 
+  const investigationMatch = location.pathname.match(/^\/investigations\/([^/]+)$/);
+  const investigationId = investigationMatch
+    ? decodeURIComponent(investigationMatch[1])
+    : location.pathname === '/network'
+      ? new URLSearchParams(location.search).get('investigation')
+      : null;
+
+  useEffect(() => {
+    let mounted = true;
+    setCaseNumber(null);
+
+    if (investigationId) {
+      api.get(`/api/investigations/${encodeURIComponent(investigationId)}`)
+        .then(res => {
+          if (mounted) {
+            setCaseNumber(res.data.case_number || investigationId);
+          }
+        })
+        .catch(() => {
+          if (mounted) setCaseNumber(investigationId);
+        });
+    }
+
+    return () => { mounted = false; };
+  }, [investigationId]);
+
+  const selectedOption = location.pathname === '/network' && investigationId
+    ? 'network graph'
+    : new URLSearchParams(location.search).get('tab') || 'overview';
+
   return (
     <header className="topbar">
-      {/* Global Search */}
+      {investigationId ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase' }}>
+            Investigation
+          </span>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
+          <span className="font-mono" style={{ color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
+            {caseNumber || 'LOADING...'}
+          </span>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem' }}>&gt;</span>
+          <span style={{ color: '#7c3aed', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+            {selectedOption}
+          </span>
+        </div>
+      ) : (
+      /* Global Search */
       <div className="topbar-search" style={{ position: 'relative' }}>
         <div className="search-input-wrapper">
           <Search size={15} className="search-icon" />
@@ -122,6 +169,7 @@ export default function Topbar() {
           </div>
         )}
       </div>
+      )}
 
       <div className="topbar-right">
         {/* Classification marker */}

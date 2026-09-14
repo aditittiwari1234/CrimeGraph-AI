@@ -70,7 +70,7 @@ router.get('/officers', async (_req: AuthenticatedRequest, res: Response): Promi
 });
 
 // GET /api/investigations/:id
-router.get('/:id', param('id').isUUID(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.get('/:id', param('id').trim().notEmpty(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return; }
   
@@ -80,22 +80,24 @@ router.get('/:id', param('id').isUUID(), async (req: AuthenticatedRequest, res: 
        FROM investigations i
        LEFT JOIN users u1 ON i.created_by = u1.id
        LEFT JOIN users u2 ON i.assigned_to = u2.id
-       WHERE i.id = $1`,
+      WHERE i.id::text = $1 OR i.case_number = $1`,
       [req.params.id]
     );
 
     if (result.rows.length === 0) { res.status(404).json({ error: 'Investigation not found' }); return; }
 
+    const investigationId = result.rows[0].id;
+
     const entities = await query(
       'SELECT * FROM investigation_entities WHERE investigation_id = $1 ORDER BY added_at DESC',
-      [req.params.id]
+      [investigationId]
     );
 
     const notes = await query(
       `SELECT n.*, u.full_name as author_name FROM investigation_notes n
        LEFT JOIN users u ON n.author_id = u.id
-       WHERE n.investigation_id = $1 ORDER BY n.created_at DESC`,
-      [req.params.id]
+      WHERE n.investigation_id = $1 ORDER BY n.created_at DESC`,
+          [investigationId]
     );
 
     await logAction(req.user?.id, req.user?.username, 'VIEW_INVESTIGATION', 'investigation', req.params.id, `Viewed investigation ${req.params.id}`, req.ip || '', req.headers['user-agent'] || '', 'success');
@@ -178,7 +180,9 @@ router.post('/:id/entities', async (req: AuthenticatedRequest, res: Response): P
   try {
     const result = await query(
       `INSERT INTO investigation_entities (investigation_id, entity_id, entity_type, entity_label, added_by)
-       VALUES ($1, $2, $3, $4, $5)
+       SELECT i.id, $2, $3, $4, $5
+       FROM investigations i
+       WHERE i.id::text = $1 OR i.case_number = $1
        ON CONFLICT DO NOTHING
        RETURNING *`,
       [req.params.id, entityId, entityType, entityLabel, req.user?.id]
@@ -196,7 +200,10 @@ router.post('/:id/notes', async (req: AuthenticatedRequest, res: Response): Prom
   try {
     const result = await query(
       `INSERT INTO investigation_notes (investigation_id, author_id, content, entity_ref)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
+       SELECT i.id, $2, $3, $4
+       FROM investigations i
+       WHERE i.id::text = $1 OR i.case_number = $1
+       RETURNING *`,
       [req.params.id, req.user?.id, content, entityRef]
     );
     res.status(201).json(result.rows[0]);

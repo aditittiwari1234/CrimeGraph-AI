@@ -189,7 +189,7 @@ export default function InvestigationsPage() {
                 cursor: 'pointer', borderLeft: `3px solid ${priorityColor[inv.priority] || '#94a3b8'}`,
                 transition: 'all var(--transition-fast)',
               }}
-              onClick={() => navigate(`/investigations/${inv.id}`)}
+              onClick={() => navigate(`/investigations/${inv.case_number}`)}
               onMouseEnter={e => (e.currentTarget.style.borderColor = priorityColor[inv.priority])}
               onMouseLeave={e => {}}
             >

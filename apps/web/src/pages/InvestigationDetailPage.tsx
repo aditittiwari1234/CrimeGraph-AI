@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Network, FileText, Clock, StickyNote, Plus, Bookmark, Download } from 'lucide-react';
 import api from '../lib/api';
 
 export default function InvestigationDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [inv, setInv] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview');
   const [note, setNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
@@ -28,6 +29,16 @@ export default function InvestigationDetailPage() {
       }))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['overview', 'entities', 'notes', 'timeline'].includes(tab)) setActiveTab(tab);
+  }, [searchParams]);
+
+  const selectTab = (tab: string) => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
 
   const addNote = async () => {
     if (!note.trim()) return;
@@ -56,7 +67,7 @@ export default function InvestigationDetailPage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <h1 style={{ fontSize: '1.4rem', flex: 1 }}>{inv.title}</h1>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => navigate('/network')}>
+            <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/network?investigation=${encodeURIComponent(inv.case_number)}`)}>
               <Network size={14} /> Open Graph
             </button>
           </div>
@@ -67,7 +78,7 @@ export default function InvestigationDetailPage() {
       {/* Tabs */}
       <div className="tabs" style={{ marginBottom: 20 }}>
         {['overview', 'entities', 'notes', 'timeline'].map(t => (
-          <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
+          <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => selectTab(t)}>
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
@@ -94,7 +105,7 @@ export default function InvestigationDetailPage() {
           <div className="card">
             <h4 style={{ marginBottom: 12, fontSize: '0.9rem' }}>Quick Actions</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button className="btn btn-secondary" onClick={() => navigate('/network')}><Network size={14} /> Explore Network Graph</button>
+              <button className="btn btn-secondary" onClick={() => navigate(`/network?investigation=${encodeURIComponent(inv.case_number)}`)}><Network size={14} /> Explore Network Graph</button>
               <button className="btn btn-secondary" onClick={() => navigate('/documents')}><FileText size={14} /> Upload Document for NLP</button>
               <button className="btn btn-secondary" onClick={() => navigate('/ai-assistant')}><Plus size={14} /> Ask AI Assistant</button>
               <button className="btn btn-secondary" onClick={() => navigate('/timeline')}><Clock size={14} /> View Timeline</button>
