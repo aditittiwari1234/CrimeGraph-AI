@@ -7,7 +7,6 @@ import {
   Plus, Check, X, Server
 } from 'lucide-react';
 import { ENTITY_COUNTS } from '../data/dataset';
-import DatabaseSelector from '../components/database/DatabaseSelector';
 import { useDatabases } from '../contexts/DatabaseContext';
 
 interface DataSource {
@@ -29,8 +28,79 @@ interface DataSource {
 
 export default function DataSourcesPage() {
   const navigate = useNavigate();
-  const { setIsAddModalOpen } = useDatabases();
+  const { setIsAddModalOpen, setActiveDatabaseId, syncDatabase } = useDatabases();
+
+  const handleBrowseRecords = (srcId: string) => {
+    switch (srcId) {
+      case 'neon-pg':
+        setActiveDatabaseId('db-neon-cloud-pg');
+        navigate('/database?tab=fir');
+        break;
+      case 'ncrb-core':
+        setActiveDatabaseId('db-ncrb-core');
+        navigate('/database');
+        break;
+      case 'cctns':
+        setActiveDatabaseId('db-cctns-state');
+        navigate('/database?tab=fir');
+        break;
+      case 'telecom':
+        setActiveDatabaseId('db-telecom-cms');
+        navigate('/database?tab=cdr');
+        break;
+      case 'fiu':
+        setActiveDatabaseId('db-fiu-aml');
+        navigate('/database?tab=financial');
+        break;
+      case 'vahan':
+        setActiveDatabaseId('db-vahan-transport');
+        navigate('/database?tab=vehicles');
+        break;
+      case 'mca':
+        setActiveDatabaseId('db-neon-cloud-pg');
+        navigate('/database?tab=organisations');
+        break;
+      case 'uidai':
+        setActiveDatabaseId('db-ncrb-core');
+        navigate('/database?tab=persons');
+        break;
+      default:
+        navigate('/database');
+    }
+  };
   const [sources, setSources] = useState<DataSource[]>([
+    {
+      id: 'neon-pg',
+      name: 'Neon Cloud PostgreSQL (Primary Relational Core)',
+      department: 'NCRB National Intelligence Cloud',
+      ministry: 'MHA / Serverless AWS Cluster (ap-southeast-1)',
+      icon: Database,
+      color: '#0284c7',
+      recordsCount: 1280,
+      recordType: 'Incident & Case Schema (SQL)',
+      status: 'connected',
+      lastSync: 'Live Connected',
+      latencyMs: 19,
+      protocol: 'PostgreSQL v16 / Pooler Port 5432',
+      authMethod: 'SCRAM-SHA-256 + SSL Required',
+      description: 'Production cloud PostgreSQL cluster hosted on Neon serverless AWS. Direct connection pooler endpoint for fast multi-tenant queries.',
+    },
+    {
+      id: 'ncrb-core',
+      name: 'NCRB National Central Repository',
+      department: 'National Crime Records Bureau (NCRB) HQ',
+      ministry: 'MHA / Consolidated Multi-Agency Intelligence',
+      icon: Database,
+      color: '#4f46e5',
+      recordsCount: 1420,
+      recordType: 'Unified Knowledge Graph Master',
+      status: 'connected',
+      lastSync: 'Live Connected',
+      latencyMs: 16,
+      protocol: 'Neo4j Bolt (bolt://graph-core.ncrb.gov.in:7687)',
+      authMethod: 'OAuth2 Token / RBAC Classified',
+      description: 'NCRB Central Repository: Consolidated National Multi-Agency Intelligence Master knowledge graph linking FIRs, CDR communications, financial trails, and linked entities across India.',
+    },
     {
       id: 'cctns',
       name: 'CCTNS National Core',
@@ -130,28 +200,71 @@ export default function DataSourcesPage() {
   ]);
 
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [syncNotice, setSyncNotice] = useState<{ name: string; count: number; latency: number; dbId: string } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importDept, setImportDept] = useState('cctns');
   const [importData, setImportData] = useState('');
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
-  // Trigger manual sync
-  const handleSync = (id: string) => {
+  // Trigger manual sync connected to central database context
+  const handleSync = async (id: string) => {
     setSyncingId(id);
-    setTimeout(() => {
-      setSources(prev => prev.map(s => {
-        if (s.id === id) {
-          return {
-            ...s,
-            recordsCount: s.recordsCount + Math.floor(Math.random() * 5) + 1,
-            lastSync: 'Just now',
-            latencyMs: Math.floor(Math.random() * 20) + 15,
-          };
+    const dbMap: Record<string, string> = {
+      'neon-pg': 'db-neon-cloud-pg',
+      'ncrb-core': 'db-ncrb-core',
+      'cctns': 'db-cctns-state',
+      'telecom': 'db-telecom-cms',
+      'fiu': 'db-fiu-aml',
+      'vahan': 'db-vahan-transport',
+      'mca': 'db-neon-cloud-pg',
+      'uidai': 'db-ncrb-core',
+    };
+
+    const targetDbId = dbMap[id] || 'db-neon-cloud-pg';
+    let newCount = 0;
+    let latency = Math.floor(Math.random() * 15) + 14;
+
+    if (id === 'neon-pg') {
+      try {
+        const res = await fetch('/api/database/live-data');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.counts) {
+            newCount = Object.values(json.counts as Record<string, number>).reduce((a, b) => a + b, 0);
+            latency = 19;
+          }
         }
-        return s;
-      }));
-      setSyncingId(null);
-    }, 1200);
+      } catch (err) {
+        console.warn('Neon sync fetch err:', err);
+      }
+    }
+
+    await syncDatabase(targetDbId);
+    setActiveDatabaseId(targetDbId);
+
+    const targetSrc = sources.find(s => s.id === id);
+    const countToSet = newCount > 0 ? newCount : (targetSrc ? targetSrc.recordsCount + Math.floor(Math.random() * 8) + 1 : 1280);
+
+    setSources(prev => prev.map(s => {
+      if (s.id === id) {
+        return {
+          ...s,
+          recordsCount: countToSet,
+          lastSync: 'Just now (Synchronized)',
+          latencyMs: latency,
+          status: 'connected',
+        };
+      }
+      return s;
+    }));
+
+    setSyncingId(null);
+    setSyncNotice({
+      name: targetSrc ? targetSrc.name : 'Data Source',
+      count: countToSet,
+      latency,
+      dbId: targetDbId,
+    });
   };
 
   // Handle Import
@@ -167,9 +280,6 @@ export default function DataSourcesPage() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', paddingBottom: 48 }}>
-      {/* Active Database Context Switcher */}
-      <DatabaseSelector />
-
       {/* Header Banner */}
       <div style={{
         background: '#ffffff',
@@ -259,7 +369,7 @@ export default function DataSourcesPage() {
             </div>
             <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Active Gateways</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>6 / 6 Connected</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>{sources.length} / {sources.length} Connected</div>
             </div>
           </div>
 
@@ -269,7 +379,7 @@ export default function DataSourcesPage() {
             </div>
             <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Average API Latency</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>28.5 ms</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>24.2 ms</div>
             </div>
           </div>
 
@@ -296,6 +406,69 @@ export default function DataSourcesPage() {
           </div>
         </div>
       </div>
+
+      {/* Live Synchronization Notification Banner */}
+      {syncNotice && (
+        <div style={{
+          background: '#f0fdf4',
+          border: '1px solid #86efac',
+          borderLeft: '5px solid #16a34a',
+          borderRadius: 10,
+          padding: '14px 20px',
+          marginBottom: 24,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+          boxShadow: '0 2px 5px rgba(22,163,74,0.1)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: '50%',
+              background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <CheckCircle2 size={22} color="#16a34a" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, color: '#14532d', fontSize: '0.95rem' }}>
+                Database Synchronized Successfully: {syncNotice.name}
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#166534', marginTop: 2 }}>
+                Live database synced over encrypted gateway ({syncNotice.latency} ms latency) · <strong>{syncNotice.count.toLocaleString()} active records</strong> updated in master pipeline.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onClick={() => {
+                setActiveDatabaseId(syncNotice.dbId);
+                navigate('/database');
+              }}
+              className="btn btn-primary"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', padding: '7px 14px',
+                background: '#16a34a', borderColor: '#16a34a',
+              }}
+            >
+              <Database size={15} />
+              <span>Explore Ingested Records</span>
+              <ArrowRight size={14} />
+            </button>
+            <button
+              onClick={() => setSyncNotice(null)}
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: '#64748b', padding: 4, display: 'flex'
+              }}
+              title="Dismiss"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Grid of Departmental Cards */}
       <div style={{
@@ -392,7 +565,7 @@ export default function DataSourcesPage() {
               {/* Action Buttons */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <button
-                  onClick={() => navigate(`/database`)}
+                  onClick={() => handleBrowseRecords(src.id)}
                   className="btn btn-secondary"
                   style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '6px 12px' }}
                 >

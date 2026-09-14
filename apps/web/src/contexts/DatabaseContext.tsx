@@ -46,6 +46,26 @@ interface DatabaseContextType {
 
 const DEFAULT_DATABASES: DatabaseConnection[] = [
   {
+    id: 'db-neon-cloud-pg',
+    name: 'Neon Cloud PostgreSQL (Live Production)',
+    type: 'postgres',
+    host: 'ep-odd-cake-b37vzncm-pooler.c-4.ap-southeast-1.aws.neon.tech',
+    port: 5432,
+    databaseName: 'neondb',
+    username: 'neondb_owner',
+    authType: 'password',
+    department: 'MHA / NCRB National Intelligence Cloud (Neon Tech AWS)',
+    classification: 'Secret',
+    status: 'connected',
+    latencyMs: 19,
+    lastPing: 'Live Connected',
+    recordCount: 1280,
+    isDefault: true,
+    sslEnabled: true,
+    createdAt: '2026-03-22T00:00:00Z',
+    description: 'Serverless PostgreSQL cluster with connection pooling on AWS ap-southeast-1. Primary live production repository for crime records.',
+  },
+  {
     id: 'db-ncrb-core',
     name: 'NCRB National Central Repository',
     type: 'neo4j',
@@ -60,7 +80,6 @@ const DEFAULT_DATABASES: DatabaseConnection[] = [
     latencyMs: 16,
     lastPing: 'Just now',
     recordCount: 1420,
-    isDefault: true,
     sslEnabled: true,
     createdAt: '2026-01-01T00:00:00Z',
     description: 'Primary unified knowledge graph containing FIRs, CDR communications, financial trails, and linked entities across India.',
@@ -143,8 +162,8 @@ const DEFAULT_DATABASES: DatabaseConnection[] = [
   },
 ];
 
-const STORAGE_KEY = 'crimegraph_databases_v1';
-const ACTIVE_DB_KEY = 'crimegraph_active_db_id_v1';
+const STORAGE_KEY = 'crimegraph_databases_v2';
+const ACTIVE_DB_KEY = 'crimegraph_active_db_id_v2';
 
 const DatabaseContext = createContext<DatabaseContextType | null>(null);
 
@@ -169,7 +188,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // fallback
     }
-    return 'db-ncrb-core';
+    return 'db-neon-cloud-pg';
   });
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -252,7 +271,36 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       return db;
     }));
 
-    await new Promise(r => setTimeout(r, 1000));
+    if (id === 'db-neon-cloud-pg') {
+      try {
+        const start = performance.now();
+        const res = await fetch('/api/database/live-data');
+        const elapsed = Math.round(performance.now() - start);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.counts) {
+            const total = Object.values(json.counts as Record<string, number>).reduce((a, b) => a + b, 0);
+            setDatabases(prev => prev.map(db => {
+              if (db.id === id) {
+                return {
+                  ...db,
+                  status: 'connected',
+                  lastPing: 'Live Connected (Just now)',
+                  latencyMs: elapsed > 0 ? elapsed : 19,
+                  recordCount: total > 0 ? total : 51,
+                };
+              }
+              return db;
+            }));
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Neon sync live query:', err);
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 800));
 
     setDatabases(prev => prev.map(db => {
       if (db.id === id) {
@@ -260,8 +308,8 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
           ...db,
           status: 'connected',
           lastPing: 'Just now',
-          latencyMs: Math.floor(Math.random() * 15) + 12,
-          recordCount: db.recordCount + Math.floor(Math.random() * 10) + 1,
+          latencyMs: Math.floor(Math.random() * 15) + 14,
+          recordCount: db.recordCount + Math.floor(Math.random() * 8) + 1,
         };
       }
       return db;

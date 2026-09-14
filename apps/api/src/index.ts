@@ -1,3 +1,6 @@
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first');
+
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
@@ -24,6 +27,7 @@ import evidenceRoutes from './routes/evidence';
 import auditRoutes from './routes/audit';
 import analyticsRoutes from './routes/analytics';
 import aiRoutes from './routes/ai';
+import databaseRoutes from './routes/database';
 import { logger } from './utils/logger';
 import { initPostgres } from './db/postgres';
 import { initNeo4j } from './db/neo4j';
@@ -80,6 +84,7 @@ app.use('/api/evidence', evidenceRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/database', databaseRoutes);
 
 // 404 handler
 app.use((_req, res) => {
@@ -113,8 +118,12 @@ async function startServer() {
     await initPostgres();
     logger.info('✅ PostgreSQL connected');
     
-    await initNeo4j();
-    logger.info('✅ Neo4j connected');
+    try {
+      await initNeo4j();
+      logger.info('✅ Neo4j connected');
+    } catch (neoErr) {
+      logger.warn('⚠️ Neo4j connection optional/skipped: ' + (neoErr as Error).message);
+    }
 
     server.listen(PORT, () => {
       logger.info(`🚀 CrimeGraph AI API running on port ${PORT}`);

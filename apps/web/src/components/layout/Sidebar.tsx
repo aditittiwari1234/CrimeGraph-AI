@@ -13,7 +13,7 @@ const navItems = [
   { path: '/entities',       label: 'Entities',           icon: Users,           section: 'analysis' },
   { path: '/timeline',       label: 'Timeline',           icon: Clock,           section: 'analysis' },
   { path: '/alerts',         label: 'Alerts',             icon: Bell,            section: 'intel' },
-  { path: '/documents',      label: 'Documents',          icon: FileText,        section: 'intel' },
+  { path: '/documents',      label: 'Documents',          icon: FileText,        section: 'intel', hideForAdmin: true },
   { path: '/data-sources',   label: 'Data Sources',       icon: Server,          section: 'tools' },
   { path: '/ai-assistant',   label: 'AI Assistant',       icon: Bot,             section: 'tools' },
   { path: '/evidence',       label: 'Evidence',           icon: Shield,          section: 'tools' },
@@ -41,7 +41,8 @@ export default function Sidebar() {
     ...s,
     items: navItems.filter(i =>
       i.section === s.key &&
-      (!i.adminOnly || user?.role === 'administrator' || user?.role === 'senior_investigator')
+      (!i.adminOnly || user?.role === 'administrator' || user?.role === 'senior_investigator') &&
+      (!i.hideForAdmin || user?.role !== 'administrator')
     ),
   }));
 
