@@ -11,14 +11,14 @@ interface DatabaseSelectorProps {
 }
 
 const ENGINE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  neo4j:         { label: 'Neo4j Graph',  color: '#1d4ed8', bg: '#dbeafe' },
-  postgres:      { label: 'PostgreSQL',   color: '#0369a1', bg: '#e0f2fe' },
-  elasticsearch: { label: 'OpenSearch',   color: '#047857', bg: '#d1fae5' },
-  oracle:        { label: 'Oracle DW',    color: '#b91c1c', bg: '#fee2e2' },
-  mongodb:       { label: 'MongoDB',      color: '#15803d', bg: '#dcfce7' },
-  mysql:         { label: 'MySQL',        color: '#c2410c', bg: '#ffedd5' },
-  sqlite:        { label: 'SQLite',       color: '#6d28d9', bg: '#ede9fe' },
-  rest_api:      { label: 'REST Gateway', color: '#334155', bg: '#f1f5f9' },
+  neo4j: { label: 'Neo4j Graph', color: '#1d4ed8', bg: '#dbeafe' },
+  postgres: { label: 'PostgreSQL', color: '#0369a1', bg: '#e0f2fe' },
+  elasticsearch: { label: 'OpenSearch', color: '#047857', bg: '#d1fae5' },
+  oracle: { label: 'Oracle DW', color: '#b91c1c', bg: '#fee2e2' },
+  mongodb: { label: 'MongoDB', color: '#15803d', bg: '#dcfce7' },
+  mysql: { label: 'MySQL', color: '#c2410c', bg: '#ffedd5' },
+  sqlite: { label: 'SQLite', color: '#6d28d9', bg: '#ede9fe' },
+  rest_api: { label: 'REST Gateway', color: '#334155', bg: '#f1f5f9' },
 };
 
 export default function DatabaseSelector({ compact = false }: DatabaseSelectorProps) {
@@ -63,16 +63,16 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
-            padding: '5px 10px',
-            background: '#ffffff',
-            border: '1px solid #cbd5e1',
+            gap: 7,
+            padding: '6px 12px',
+            background: '#eff6ff',
+            border: '1px solid #bfdbfe',
             borderRadius: 8,
             cursor: 'pointer',
             fontSize: '0.78rem',
-            color: '#0f172a',
-            fontWeight: 600,
-            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+            color: '#1e3a8a',
+            fontWeight: 700,
+            boxShadow: '0 1px 2px rgba(37,99,235,0.08)',
             transition: 'all 120ms ease',
           }}
           title={`Active Database: ${activeDatabase.name} (${activeDatabase.department})`}
@@ -80,25 +80,26 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
           <div style={{
             width: 7, height: 7, borderRadius: '50%',
             background: activeDatabase.status === 'connected' ? '#16a34a' : '#ea580c',
-            boxShadow: activeDatabase.status === 'connected' ? '0 0 0 2px rgba(22,163,74,0.2)' : 'none',
+            boxShadow: activeDatabase.status === 'connected' ? '0 0 0 2px rgba(22,163,74,0.25)' : 'none',
           }} />
           <Database size={13} color="#2563eb" />
+          <span style={{ color: '#64748b', fontWeight: 600, fontSize: '0.72rem' }}>DB:</span>
           <span style={{
-            maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {activeDatabase.name}
           </span>
           <span style={{
             background: engineMeta.bg,
             color: engineMeta.color,
-            padding: '1px 5px',
+            padding: '1px 6px',
             borderRadius: 4,
-            fontSize: '0.68rem',
-            fontWeight: 700,
+            fontSize: '0.66rem',
+            fontWeight: 800,
           }}>
             {engineMeta.label}
           </span>
-          <ChevronDown size={13} color="#64748b" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
+          <ChevronDown size={13} color="#2563eb" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
         </button>
 
         {isOpen && (
@@ -204,7 +205,7 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
                 }}
               >
                 <Plus size={14} />
-                <span>+ Connect New Database</span>
+                <span>Connect New Database</span>
               </button>
             </div>
           </div>
@@ -311,7 +312,7 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
             }}
           >
             <Plus size={14} />
-            <span>+ Connect Database</span>
+            <span>Connect Database</span>
           </button>
 
           {/* Switcher Dropdown */}

@@ -223,7 +223,7 @@ export default function DataSourcesPage() {
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
             >
               <Plus size={15} color="#2563eb" />
-              + Connect Database
+              Connect Database
             </button>
             <button
               onClick={() => navigate('/database')}
@@ -420,24 +420,29 @@ export default function DataSourcesPage() {
 
       {/* Manual Dataset Ingestion Modal */}
       {showImportModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
-          backdropFilter: 'blur(3px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: 20,
-        }}>
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowImportModal(false);
+          }}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 20,
+          }}
+        >
           <div style={{
             background: '#ffffff',
             borderRadius: 14,
             width: '100%',
             maxWidth: 620,
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+            boxShadow: '0 25px 60px -15px rgba(15, 23, 42, 0.3), 0 0 0 1px rgba(15, 23, 42, 0.12)',
             overflow: 'hidden',
+            border: '1px solid #cbd5e1',
           }}>
             <div style={{
               padding: '18px 24px',

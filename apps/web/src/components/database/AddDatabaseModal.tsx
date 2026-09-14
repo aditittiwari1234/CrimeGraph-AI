@@ -82,28 +82,32 @@ export default function AddDatabaseModal() {
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(15, 23, 42, 0.6)',
-      backdropFilter: 'blur(4px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1100,
-      padding: 16,
-    }}>
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) setIsAddModalOpen(false);
+      }}
+      style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        background: 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1100,
+        padding: 16,
+      }}
+    >
       <div style={{
         background: '#ffffff',
         borderRadius: 14,
         width: '100%',
         maxWidth: 680,
         maxHeight: '92vh',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        boxShadow: '0 25px 60px -15px rgba(15, 23, 42, 0.3), 0 0 0 1px rgba(15, 23, 42, 0.12)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        border: '1px solid #e2e8f0',
+        border: '1px solid #cbd5e1',
       }}>
         {/* Header */}
         <div style={{

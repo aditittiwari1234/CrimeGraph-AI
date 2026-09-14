@@ -7,10 +7,12 @@ import {
 import {
   FolderOpen, Users, AlertTriangle, Activity, Network,
   TrendingUp, Shield, Clock, ChevronRight, ArrowUpRight,
-  Zap, Eye
+  Zap, Eye, Database
 } from 'lucide-react';
 import api from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import DatabaseSelector from '../components/database/DatabaseSelector';
+import { useDatabases } from '../contexts/DatabaseContext';
 
 interface DashboardStats {
   activeInvestigations: number;
@@ -117,7 +119,10 @@ export default function DashboardPage() {
             Welcome back, {user?.fullName} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/database')}>
+            <Database size={14} color="#2563eb" /> Database Explorer
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={() => navigate('/network')}>
             <Network size={14} /> Open Graph
           </button>
@@ -126,6 +131,9 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* Active Database Context Banner */}
+      <DatabaseSelector />
 
       {/* KPI Stats */}
       <div className="grid-4" style={{ marginBottom: 24 }}>
