@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Network, ExternalLink, AlertCircle, Shield, Clock, ChevronRight } from 'lucide-react';
 import api from '../lib/api';
 
@@ -13,10 +13,16 @@ const DEMO_ENTITY: Record<string, any> = {
 export default function EntityDetailPage() {
   const { type, id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [entity, setEntity] = useState<any>(null);
   const [relationships, setRelationships] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('details');
+
+  const rawTab = searchParams.get('tab') || 'details';
+  const validTabs = ['details', 'relationships', 'potential-links', 'evidence'];
+  const activeTab = validTabs.includes(rawTab) ? rawTab : 'details';
+  const setActiveTab = (t: string) => setSearchParams({ tab: t });
+
   const [linkPredictions, setLinkPredictions] = useState<any[]>([]);
 
   useEffect(() => {
@@ -72,7 +78,7 @@ export default function EntityDetailPage() {
           {entity?.alias && <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Alias: {entity.alias}</p>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/network')}>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/network?entityType=${encodeURIComponent(type || '')}&entityId=${encodeURIComponent(id || '')}`)}>
             <Network size={14} /> View in Graph
           </button>
         </div>

@@ -80,6 +80,8 @@ function getNodeLabel(node: GraphNode): string {
 export default function NetworkGraphPage() {
   const [searchParams] = useSearchParams();
   const investigationCase = searchParams.get('investigation');
+  const entityIdParam = searchParams.get('entityId') || searchParams.get('entity');
+  const entityTypeParam = searchParams.get('entityType') || 'Person';
   const cyRef = useRef<HTMLDivElement>(null);
   const cyInstance = useRef<Core | null>(null);
   const [loading, setLoading] = useState(false);
@@ -247,7 +249,7 @@ export default function NetworkGraphPage() {
     const cy = initCytoscape();
     if (!cy) return;
     loadDemoNetwork(cy);
-  }, [investigationCase]);
+  }, [investigationCase, entityIdParam, entityTypeParam]);
 
   const loadDemoNetwork = async (cy?: Core) => {
     const instance = cy || cyInstance.current;
@@ -257,9 +259,11 @@ export default function NetworkGraphPage() {
     try {
       const res = investigationCase
         ? await api.get(`/api/graph/investigation/${encodeURIComponent(investigationCase)}`)
-        : await api.get('/api/entities/Person/P001/network?depth=2&limit=80');
+        : entityIdParam
+          ? await api.get(`/api/entities/${encodeURIComponent(entityTypeParam)}/${encodeURIComponent(entityIdParam)}/network?depth=2&limit=80`)
+          : await api.get('/api/entities/Person/P001/network?depth=2&limit=80');
       const { nodes, edges } = res.data;
-      if (nodes?.length || investigationCase) renderGraph(instance, nodes || [], edges || []);
+      if (nodes?.length || investigationCase || entityIdParam) renderGraph(instance, nodes || [], edges || []);
       else renderDemoGraph(instance);
     } catch {
       // Use synthetic demo data
@@ -273,25 +277,27 @@ export default function NetworkGraphPage() {
     cy.elements().remove();
 
     const cyNodes = nodes.map(n => ({
+      group: 'nodes' as const,
       data: {
         id: n.id,
-        label: getNodeLabel(n),
+        label: n.name || n.number || n.licensePlate || n.accountNumber || n.id,
         nodeType: n.nodeType,
         ...n,
       },
     }));
 
     const cyEdges = edges.map((e, i) => ({
+      group: 'edges' as const,
       data: {
-        id: e.id || `e-${i}`,
+        id: e.id || `edge-${i}`,
         source: e.source,
         target: e.target,
-        label: e.type?.replace(/_/g, ' '),
         type: e.type,
-        confidence: e.confidence,
-        timestamp: e.timestamp,
+        confidence: e.confidence || 0.8,
+        label: e.type.replace(/_/g, ' '),
         relSource: e.relSource,
         recordRef: e.recordRef,
+        timestamp: e.timestamp,
       },
     }));
 
@@ -311,6 +317,20 @@ export default function NetworkGraphPage() {
     setNodeCount(cyNodes.length);
     setEdgeCount(cyEdges.length);
     setGraphPeople(nodes.filter(node => node.nodeType === 'Person').slice(0, 12));
+
+    if (entityIdParam) {
+      setTimeout(() => {
+        const target = cy.$(`node[id = "${entityIdParam}"]`);
+        if (target && target.length > 0) {
+          setSelectedNode(target.data());
+          cy.elements().removeClass('highlighted dimmed');
+          const neighborhood = target.closedNeighborhood();
+          cy.elements().not(neighborhood).addClass('dimmed');
+          neighborhood.addClass('highlighted');
+          cy.animate({ center: { eles: target }, zoom: 1.5, duration: 400 });
+        }
+      }, 600);
+    }
   };
 
   useEffect(() => {

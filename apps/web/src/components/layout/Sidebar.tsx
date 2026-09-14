@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, FolderOpen, Network, Users, FileText,
@@ -5,6 +6,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { canManageDatabases, canViewAuditLogs, isInspectorRole } from '../../lib/permissions';
+import api from '../../lib/api';
+import { ALL_ENTITIES, type AnyEntity } from '../../data/dataset';
 
 const navItems = [
   { path: '/dashboard',      label: 'Dashboard',         icon: LayoutDashboard, section: 'main' },
@@ -29,10 +32,28 @@ const sections = [
   { key: 'tools',    label: 'Tools' },
 ];
 
+const nodeColors: Record<string, string> = {
+  Person: '#3b82f6', Phone: '#22c55e', Vehicle: '#f97316',
+  Organization: '#8b5cf6', Location: '#ef4444', Account: '#eab308',
+  Case: '#06b6d4', Event: '#ec4899',
+};
+
+function getEntityLabel(e: AnyEntity): string {
+  if (e.nodeType === 'Person') return e.name;
+  if (e.nodeType === 'Phone') return e.number;
+  if (e.nodeType === 'Vehicle') return e.licensePlate;
+  if (e.nodeType === 'Organization') return e.name;
+  if (e.nodeType === 'Account') return e.accountNumber;
+  if (e.nodeType === 'Location') return e.name;
+  return (e as any).name || (e as any).number || (e as any).licensePlate || (e as any).accountNumber || e.id;
+}
+
 
 export default function Sidebar() {
   const { user } = useAuth();
   const location = useLocation();
+
+  // Investigation context
   const investigationMatch = location.pathname.match(/^\/investigations\/([^/]+)$/);
   const isInvestigationDetail = Boolean(investigationMatch);
   const investigationId = investigationMatch
@@ -41,6 +62,50 @@ export default function Sidebar() {
       ? new URLSearchParams(location.search).get('investigation')
       : null;
   const currentInvestigationTab = new URLSearchParams(location.search).get('tab') || 'overview';
+
+  // Entity context
+  const entityMatch = location.pathname.match(/^\/entities\/([^/]+)\/([^/]+)$/);
+  const isEntityDetail = Boolean(entityMatch);
+  const entityType = entityMatch
+    ? decodeURIComponent(entityMatch[1])
+    : ['/network', '/timeline'].includes(location.pathname)
+      ? new URLSearchParams(location.search).get('entityType')
+      : null;
+  const entityId = entityMatch
+    ? decodeURIComponent(entityMatch[2])
+    : ['/network', '/timeline'].includes(location.pathname)
+      ? new URLSearchParams(location.search).get('entityId') || new URLSearchParams(location.search).get('entity')
+      : null;
+  const currentEntityTab = new URLSearchParams(location.search).get('tab') || 'details';
+  const [entityLabel, setEntityLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    if (entityType && entityId) {
+      const found = ALL_ENTITIES.find(e => e.nodeType === entityType && e.id === entityId);
+      if (found) {
+        setEntityLabel(getEntityLabel(found));
+      } else {
+        setEntityLabel(`${entityType} ${entityId}`);
+      }
+
+      api.get(`/api/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`)
+        .then(res => {
+          if (mounted && res.data?.entity) {
+            const e = res.data.entity;
+            const label = e.name || e.number || e.licensePlate || e.accountNumber || e.id;
+            if (label) setEntityLabel(label);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setEntityLabel(null);
+    }
+    return () => { mounted = false; };
+  }, [entityType, entityId]);
+
+  const isEntityContext = Boolean(entityType && entityId && (isEntityDetail || !investigationId));
+  const isInvestigationContext = Boolean(investigationId && !isEntityDetail);
 
   const investigationItems = investigationId ? [
     { path: `/investigations/${encodeURIComponent(investigationId)}?tab=overview`, label: 'Overview', icon: FolderOpen },
@@ -51,6 +116,45 @@ export default function Sidebar() {
     { path: `/investigations/${encodeURIComponent(investigationId)}?tab=timeline`, label: 'Timeline', icon: Clock },
     { path: `/network?investigation=${encodeURIComponent(investigationId)}`, label: 'Network Graph', icon: Network },
     { path: `/ai-assistant?investigation=${encodeURIComponent(investigationId)}`, label: 'AI Assistant', icon: Bot },
+  ] : [];
+
+  const entityItems = (entityType && entityId) ? [
+    {
+      path: `/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?tab=details`,
+      label: 'Known Details',
+      icon: FileText,
+      tab: 'details',
+    },
+    {
+      path: `/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?tab=relationships`,
+      label: 'Relationships',
+      icon: Users,
+      tab: 'relationships',
+    },
+    {
+      path: `/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?tab=potential-links`,
+      label: 'Potential Links',
+      icon: Bot,
+      tab: 'potential-links',
+    },
+    {
+      path: `/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?tab=evidence`,
+      label: 'Evidence & Ledger',
+      icon: Shield,
+      tab: 'evidence',
+    },
+    {
+      path: `/network?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
+      label: 'Network Graph',
+      icon: Network,
+      pagePath: '/network',
+    },
+    {
+      path: `/timeline?entity=${encodeURIComponent(entityId)}&entityType=${encodeURIComponent(entityType)}`,
+      label: 'Timeline Events',
+      icon: Clock,
+      pagePath: '/timeline',
+    },
   ] : [];
 
   const grouped = sections.map(s => ({
@@ -100,8 +204,76 @@ export default function Sidebar() {
 
       {/* Nav */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
-        {investigationId && (
-          <div style={{ marginBottom: 10, paddingBottom: 8 }}>
+        {/* Entity Context Navigation */}
+        {isEntityContext && entityType && entityId && (
+          <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #e2e8f0' }}>
+            <div style={{ padding: '10px 10px 4px', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: nodeColors[entityType] || '#2563eb' }}>
+              Current Entity
+            </div>
+            <div style={{ padding: '4px 10px 2px', fontSize: '0.82rem', fontWeight: 700, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {entityLabel || entityId}
+            </div>
+            <div style={{ padding: '0 10px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                fontSize: '0.62rem',
+                padding: '1px 5px',
+                borderRadius: 4,
+                background: `${nodeColors[entityType] || '#2563eb'}18`,
+                color: nodeColors[entityType] || '#2563eb',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+              }}>
+                {entityType}
+              </span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: '#64748b' }}>
+                {entityId}
+              </span>
+            </div>
+            <NavLink
+              to="/entities"
+              style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2, color: '#475569' }}
+            >
+              <Users size={15} style={{ color: '#94a3b8' }} />
+              <span>All Entities</span>
+            </NavLink>
+            {entityItems.map(item => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                style={({ isActive }) => {
+                  const itemIsActive = item.tab
+                    ? isEntityDetail && currentEntityTab === item.tab
+                    : (item.pagePath ? location.pathname === item.pagePath : isActive);
+                  const activeColor = nodeColors[entityType] || '#2563eb';
+                  return {
+                    display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8,
+                    fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2,
+                    color: itemIsActive ? activeColor : '#475569',
+                    background: itemIsActive ? `${activeColor}12` : 'transparent',
+                    border: itemIsActive ? `1px solid ${activeColor}40` : '1px solid transparent',
+                  };
+                }}
+              >
+                {({ isActive }) => {
+                  const itemIsActive = item.tab
+                    ? isEntityDetail && currentEntityTab === item.tab
+                    : (item.pagePath ? location.pathname === item.pagePath : isActive);
+                  const activeColor = nodeColors[entityType] || '#2563eb';
+                  return (
+                    <>
+                      <item.icon size={15} style={{ color: itemIsActive ? activeColor : '#94a3b8' }} />
+                      <span>{item.label}</span>
+                    </>
+                  );
+                }}
+              </NavLink>
+            ))}
+          </div>
+        )}
+
+        {/* Investigation Context Navigation */}
+        {!isEntityContext && isInvestigationContext && investigationId && (
+          <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #e2e8f0' }}>
             <div style={{ padding: '10px 10px 4px', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#7c3aed' }}>
               Current Investigation
             </div>
@@ -139,7 +311,9 @@ export default function Sidebar() {
             ))}
           </div>
         )}
-        {!investigationId && grouped.map(section => (
+
+        {/* Default Navigation Sections */}
+        {!isEntityContext && !isInvestigationContext && grouped.map(section => (
           <div key={section.key} style={{ marginBottom: 4 }}>
             <div style={{
               padding: '10px 10px 4px',
