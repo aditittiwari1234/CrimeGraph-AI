@@ -285,6 +285,8 @@ export default function Sidebar() {
   // Nav item padding — centred icon when collapsed
   const navItemPad = expanded ? '8px 10px' : '8px 0';
   const navItemJustify = expanded ? 'flex-start' : 'center';
+  const navItemGap = expanded ? 9 : 0;
+  const navIconSize = expanded ? 17 : 19;
 
   return (
     <nav
@@ -299,16 +301,14 @@ export default function Sidebar() {
 
         {/* Evidence Context Navigation */}
         {isEvidenceContext && evidenceId && (
-          <div style={{ marginBottom: 10, paddingBottom: 8 }}>
-            <div style={{ ...sectionHeaderStyle, color: '#059669' }}>Current Evidence</div>
-            <div style={{ ...labelStyle, padding: '4px 10px 2px', fontSize: '0.82rem', fontWeight: 700, color: '#0f172a', maxWidth: expanded ? 200 : 0 }}>
-              {evidenceMeta?.title || evidenceId}
-            </div>
+          <div style={{ marginBottom: expanded ? 10 : 0, paddingBottom: expanded ? 8 : 0, transition: 'all 220ms ease' }}>
+
+
             <NavLink
               to="/evidence"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: 9, padding: navItemPad, borderRadius: 8, fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2, color: '#475569', transition: 'padding 220ms ease, justify-content 220ms ease' }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: navItemGap, padding: navItemPad, borderRadius: 8, fontSize: '0.95rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2, color: '#475569', transition: 'padding 220ms ease, justify-content 220ms ease, gap 220ms ease' }}
             >
-              <Shield size={15} style={{ color: '#94a3b8', flexShrink: 0 }} />
+              <Shield size={navIconSize} style={{ color: '#94a3b8', flexShrink: 0, transition: 'all 200ms ease' }} />
               <span style={labelStyle}>All Evidence</span>
             </NavLink>
             {evidenceItems.map(item => (
@@ -318,13 +318,13 @@ export default function Sidebar() {
                 style={({ isActive }) => {
                   const itemIsActive = isEvidenceDetail && currentEvidenceTab === item.tab;
                   return {
-                    display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: 9,
+                    display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: navItemGap,
                     padding: navItemPad, borderRadius: 8,
-                    fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2,
+                    fontSize: '0.95rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2,
                     color: itemIsActive ? '#059669' : '#475569',
                     background: itemIsActive ? 'rgba(5, 150, 105, 0.08)' : 'transparent',
                     border: itemIsActive ? '1px solid rgba(5, 150, 105, 0.25)' : '1px solid transparent',
-                    transition: 'padding 220ms ease',
+                    transition: 'padding 220ms ease, gap 220ms ease',
                   };
                 }}
               >
@@ -332,7 +332,7 @@ export default function Sidebar() {
                   const itemIsActive = isEvidenceDetail && currentEvidenceTab === item.tab;
                   return (
                     <>
-                      <item.icon size={15} style={{ color: itemIsActive ? '#059669' : '#94a3b8', flexShrink: 0 }} />
+                      <item.icon size={navIconSize} style={{ color: itemIsActive ? '#059669' : '#94a3b8', flexShrink: 0, transition: 'all 200ms ease' }} />
                       <span style={labelStyle}>{item.label}</span>
                     </>
                   );
@@ -344,16 +344,14 @@ export default function Sidebar() {
 
         {/* Entity Context Navigation */}
         {!isEvidenceContext && isEntityContext && entityType && entityId && (
-          <div style={{ marginBottom: 10, paddingBottom: 8 }}>
-            <div style={{ ...sectionHeaderStyle, color: nodeColors[entityType] || '#2563eb' }}>Current Entity</div>
-            <div style={{ ...labelStyle, padding: '4px 10px 2px', fontSize: '0.82rem', fontWeight: 700, color: '#0f172a', maxWidth: expanded ? 200 : 0 }}>
-              {entityLabel || entityId}
-            </div>
+          <div style={{ marginBottom: expanded ? 10 : 0, paddingBottom: expanded ? 8 : 0, transition: 'all 220ms ease' }}>
+
+
             <NavLink
               to="/entities"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: 9, padding: navItemPad, borderRadius: 8, fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2, color: '#475569', transition: 'padding 220ms ease' }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: navItemGap, padding: navItemPad, borderRadius: 8, fontSize: '0.95rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2, color: '#475569', transition: 'padding 220ms ease, gap 220ms ease' }}
             >
-              <Users size={15} style={{ color: '#94a3b8', flexShrink: 0 }} />
+              <Users size={navIconSize} style={{ color: '#94a3b8', flexShrink: 0, transition: 'all 200ms ease' }} />
               <span style={labelStyle}>All Entities</span>
             </NavLink>
             {entityItems.map(item => (
@@ -366,13 +364,13 @@ export default function Sidebar() {
                     : (item.pagePath ? location.pathname === item.pagePath : isActive);
                   const activeColor = nodeColors[entityType] || '#2563eb';
                   return {
-                    display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: 9,
+                    display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: navItemGap,
                     padding: navItemPad, borderRadius: 8,
-                    fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2,
+                    fontSize: '0.95rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2,
                     color: itemIsActive ? activeColor : '#475569',
                     background: itemIsActive ? `${activeColor}12` : 'transparent',
                     border: itemIsActive ? `1px solid ${activeColor}40` : '1px solid transparent',
-                    transition: 'padding 220ms ease',
+                    transition: 'padding 220ms ease, gap 220ms ease',
                   };
                 }}
               >
@@ -383,7 +381,7 @@ export default function Sidebar() {
                   const activeColor = nodeColors[entityType] || '#2563eb';
                   return (
                     <>
-                      <item.icon size={15} style={{ color: itemIsActive ? activeColor : '#94a3b8', flexShrink: 0 }} />
+                      <item.icon size={navIconSize} style={{ color: itemIsActive ? activeColor : '#94a3b8', flexShrink: 0, transition: 'all 200ms ease' }} />
                       <span style={labelStyle}>{item.label}</span>
                     </>
                   );
@@ -395,16 +393,13 @@ export default function Sidebar() {
 
         {/* Investigation Context Navigation */}
         {!isEvidenceContext && !isEntityContext && isInvestigationContext && investigationId && (
-          <div style={{ marginBottom: 10, paddingBottom: 8 }}>
-            <div style={{ ...sectionHeaderStyle, color: '#7c3aed' }}>Current Investigation</div>
-            <div style={{ ...labelStyle, padding: '4px 10px 8px', fontFamily: 'var(--font-mono)', fontSize: '0.7rem', fontWeight: 700, color: '#475569', maxWidth: expanded ? 200 : 0 }}>
-              {investigationId}
-            </div>
+          <div style={{ marginBottom: expanded ? 10 : 0, paddingBottom: expanded ? 8 : 0, transition: 'all 220ms ease' }}>
+
             <NavLink
               to="/investigations"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: 9, padding: navItemPad, borderRadius: 8, fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2, color: '#475569', transition: 'padding 220ms ease' }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: navItemGap, padding: navItemPad, borderRadius: 8, fontSize: '0.95rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2, color: '#475569', transition: 'padding 220ms ease, gap 220ms ease' }}
             >
-              <FolderOpen size={15} style={{ color: '#94a3b8', flexShrink: 0 }} />
+              <FolderOpen size={navIconSize} style={{ color: '#94a3b8', flexShrink: 0, transition: 'all 200ms ease' }} />
               <span style={labelStyle}>All Investigations</span>
             </NavLink>
             {investigationItems.map(item => (
@@ -415,13 +410,13 @@ export default function Sidebar() {
                   const itemTab = new URL(item.path, window.location.origin).searchParams.get('tab');
                   const itemIsActive = itemTab ? isInvestigationDetail && currentInvestigationTab === itemTab : isActive;
                   return {
-                    display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: 9,
+                    display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: navItemGap,
                     padding: navItemPad, borderRadius: 8,
-                    fontSize: '0.82rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2,
+                    fontSize: '0.95rem', fontWeight: 500, textDecoration: 'none', marginBottom: 2,
                     color: itemIsActive ? '#7c3aed' : '#475569',
                     background: itemIsActive ? '#f5f3ff' : 'transparent',
                     border: itemIsActive ? '1px solid #ddd6fe' : '1px solid transparent',
-                    transition: 'padding 220ms ease',
+                    transition: 'padding 220ms ease, gap 220ms ease',
                   };
                 }}
               >
@@ -430,7 +425,7 @@ export default function Sidebar() {
                   const itemIsActive = itemTab ? isInvestigationDetail && currentInvestigationTab === itemTab : isActive;
                   return (
                     <>
-                      <item.icon size={15} style={{ color: itemIsActive ? '#7c3aed' : '#94a3b8', flexShrink: 0 }} />
+                      <item.icon size={navIconSize} style={{ color: itemIsActive ? '#7c3aed' : '#94a3b8', flexShrink: 0, transition: 'all 200ms ease' }} />
                       <span style={labelStyle}>{item.label}</span>
                     </>
                   );
@@ -442,7 +437,7 @@ export default function Sidebar() {
 
         {/* Default Navigation Sections */}
         {!isEvidenceContext && !isEntityContext && !isInvestigationContext && grouped.map(section => (
-          <div key={section.key} style={{ marginBottom: 4 }}>
+          <div key={section.key} style={{ marginBottom: expanded ? 4 : 0, transition: 'margin-bottom 220ms ease' }}>
             <div style={sectionHeaderStyle}>{section.label}</div>
             {section.items.map(item => (
               <NavLink
@@ -453,13 +448,13 @@ export default function Sidebar() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: navItemJustify,
-                  gap: 9,
+                  gap: navItemGap,
                   padding: navItemPad,
                   borderRadius: 8,
-                  fontSize: '0.85rem',
+                  fontSize: '0.95rem',
                   fontWeight: 500,
                   textDecoration: 'none',
-                  transition: 'all 150ms ease, padding 220ms ease',
+                  transition: 'all 150ms ease, padding 220ms ease, gap 220ms ease',
                   marginBottom: 2,
                   color: isActive ? '#2563eb' : '#475569',
                   background: isActive ? '#eff6ff' : 'transparent',
@@ -468,7 +463,7 @@ export default function Sidebar() {
               >
                 {({ isActive }) => (
                   <>
-                    <item.icon size={16} style={{ color: isActive ? '#2563eb' : '#94a3b8', flexShrink: 0 }} />
+                    <item.icon size={navIconSize} style={{ color: isActive ? '#2563eb' : '#94a3b8', flexShrink: 0, transition: 'all 200ms ease' }} />
                     <span style={labelStyle}>{item.label}</span>
                   </>
                 )}
