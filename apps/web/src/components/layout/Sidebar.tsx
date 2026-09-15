@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, Link, useLocation } from 'react-router-dom';
+import logoImg from '../../assets/Logo.png';
 import {
   LayoutDashboard, FolderOpen, Network, Users, FileText,
   Bell, Clock, Bot, Shield, BookOpen, Activity, Database, Server, Sliders,
@@ -265,29 +266,31 @@ export default function Sidebar() {
       zIndex: 100, overflow: 'hidden',
     }}>
       {/* Logo */}
-      <div style={{
-        padding: '0 20px',
-        borderBottom: '1px solid #f1f5f9',
-        display: 'flex', alignItems: 'center', gap: 10,
-        minHeight: 'var(--topbar-height)',
-      }}>
-        <div style={{
-          width: 30, height: 30, flexShrink: 0,
-          background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
-          borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
-        }}>
-          <Activity size={15} color="white" />
-        </div>
-        <div>
-          <div style={{ fontSize: '0.875rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
+      <Link
+        to="/dashboard"
+        style={{
+          padding: '0 16px',
+          borderBottom: '1px solid #f1f5f9',
+          display: 'flex', alignItems: 'center', gap: 10,
+          minHeight: 'var(--topbar-height)',
+          textDecoration: 'none',
+          cursor: 'pointer',
+        }}
+      >
+        <img
+          src={logoImg}
+          alt="CrimeGraph AI"
+          style={{ height: 32, width: 'auto', maxHeight: 36, objectFit: 'contain', flexShrink: 0 }}
+        />
+        <div style={{ overflow: 'hidden' }}>
+          <div style={{ fontSize: '0.875rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.01em', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
             CrimeGraph AI
           </div>
-          <div style={{ fontSize: '0.6rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 500 }}>
+          <div style={{ fontSize: '0.6rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 500, whiteSpace: 'nowrap' }}>
             NCRB · Intel Platform
           </div>
         </div>
-      </div>
+      </Link>
 
       {/* Nav */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>

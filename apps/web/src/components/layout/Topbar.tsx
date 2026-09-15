@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Search, Bell, LogOut, Shield } from 'lucide-react';
+import logoImg from '../../assets/Logo.png';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
 import { ALL_ENTITIES, type AnyEntity } from '../../data/dataset';
@@ -179,6 +180,37 @@ export default function Topbar() {
 
   return (
     <header className="topbar">
+      {/* Brand Logo */}
+      <Link
+        to="/dashboard"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 9,
+          textDecoration: 'none',
+          color: 'inherit',
+          flexShrink: 0,
+          cursor: 'pointer',
+        }}
+        title="CrimeGraph AI — Home"
+      >
+        <img
+          src={logoImg}
+          alt="CrimeGraph AI Logo"
+          style={{ height: 30, width: 'auto', maxHeight: 32, objectFit: 'contain' }}
+        />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: '0.875rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.01em', lineHeight: 1.15 }}>
+            CrimeGraph AI
+          </span>
+          <span style={{ fontSize: '0.58rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+            NCRB · Intel
+          </span>
+        </div>
+      </Link>
+
+      <div style={{ width: 1, height: 26, background: 'var(--border-primary)', flexShrink: 0, margin: '0 4px' }} />
+
       {isEvidenceContext && evidenceId ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
           <span

@@ -435,10 +435,35 @@ export const GRAPH_EDGES = [
 // ============================================================
 // HELPER: all entities as unified list
 // ============================================================
-export type AnyEntity = Person | Phone | Vehicle | Organisation | Account | Location;
+export interface CaseEntity {
+  id: string;
+  nodeType: 'Case';
+  name: string;
+  firNumber: string;
+  station?: string;
+  district?: string;
+  state?: string;
+  filedDate?: string;
+  filedBy?: string;
+  sections?: string[];
+  description?: string;
+  complainant?: string;
+  accused?: string[];
+  status?: string;
+  priority?: string;
+  linkedEntities?: string[];
+}
+
+export const CASE_ENTITIES: CaseEntity[] = FIR_RECORDS.map(fir => ({
+  ...fir,
+  nodeType: 'Case' as const,
+  name: fir.firNumber,
+}));
+
+export type AnyEntity = Person | Phone | Vehicle | Organisation | Account | Location | CaseEntity;
 
 export const ALL_ENTITIES: AnyEntity[] = [
-  ...PERSONS, ...PHONES, ...VEHICLES, ...ORGANISATIONS, ...ACCOUNTS, ...LOCATIONS,
+  ...PERSONS, ...PHONES, ...VEHICLES, ...ORGANISATIONS, ...ACCOUNTS, ...LOCATIONS, ...CASE_ENTITIES,
 ];
 
 export const ENTITY_COUNTS = {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Activity, Eye, EyeOff, Shield, AlertTriangle, CheckCircle } from 'lucide-react';
+import logoImg from '../assets/Logo.png';
 
 const DEMO_CREDS: Record<string, { u: string; p: string; label: string; role: string }> = {
   admin:      { u: 'admin',          p: 'Demo@1234', label: 'Administrator',   role: 'Full access' },
@@ -78,12 +79,12 @@ export default function LoginPage() {
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 40 }}>
           <div style={{
-            width: 68, height: 68,
-            background: 'linear-gradient(135deg, #3b82f6, #7c3aed)',
+            height: 68, padding: '8px 14px',
+            background: 'rgba(255, 255, 255, 0.96)',
             borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 40px rgba(59,130,246,0.35)',
+            boxShadow: '0 0 35px rgba(59,130,246,0.3)',
           }}>
-            <Activity size={34} color="white" />
+            <img src={logoImg} alt="CrimeGraph AI Logo" style={{ height: 48, width: 'auto', objectFit: 'contain' }} />
           </div>
           <div>
             <h1 style={{ fontSize: '2.4rem', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1, color: '#f8fafc', margin: 0 }}>
