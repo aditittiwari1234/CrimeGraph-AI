@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink, Link, useLocation } from 'react-router-dom';
-import logoImg from '../../assets/Logo.png';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, FolderOpen, Network, Users, FileText,
   Bell, Clock, Bot, Shield, BookOpen, Activity, Database, Server, Sliders,
