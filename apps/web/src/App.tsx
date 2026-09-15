@@ -20,6 +20,7 @@ import AuditLogsPage from './pages/AuditLogsPage';
 import DatabasePage from './pages/DatabasePage';
 import DataSourcesPage from './pages/DataSourcesPage';
 import InspectorHomePage from './pages/InspectorHomePage';
+import UserManagementPage from './pages/UserManagementPage';
 import { isInspectorRole } from './lib/permissions';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="database" element={<DatabasePage />} />
             <Route path="data-sources" element={<DataSourcesPage />} />
             <Route path="datasources" element={<Navigate to="/data-sources" replace />} />
+            <Route path="users" element={<UserManagementPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>

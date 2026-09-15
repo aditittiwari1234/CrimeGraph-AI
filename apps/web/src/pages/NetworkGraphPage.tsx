@@ -651,40 +651,7 @@ export default function NetworkGraphPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - var(--topbar-height) - 48px)', gap: 12 }}>
-      {!investigationCase && !entityIdParam && (
-        <div className="card" style={{ padding: '12px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-            <div>
-              <h3 style={{ fontSize: '0.95rem', marginBottom: 2 }}>Investigator Network Overview</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>Inspectors, assigned cases, and people represented in the overall graph</p>
-            </div>
-            <span className="badge badge-info">{graphPeople.length} people in view</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-            <div>
-              <div className="stat-label" style={{ marginBottom: 6 }}>Inspectors</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {officers.slice(0, 4).map(officer => <span key={officer.id} className="badge badge-neutral">{officer.full_name}</span>)}
-                {officers.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>No officers loaded</span>}
-              </div>
-            </div>
-            <div>
-              <div className="stat-label" style={{ marginBottom: 6 }}>Assigned Cases</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 54, overflowY: 'auto' }}>
-                {cases.slice(0, 3).map(item => <span key={item.id} style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>{item.case_number} · {item.assigned_to_name || 'Unassigned'}</span>)}
-                {cases.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>No cases loaded</span>}
-              </div>
-            </div>
-            <div>
-              <div className="stat-label" style={{ marginBottom: 6 }}>People in Graph</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {graphPeople.slice(0, 4).map(person => <span key={person.id} className="badge badge-neutral">{getNodeLabel(person)}</span>)}
-                {graphPeople.length > 4 && <span className="badge badge-info">+{graphPeople.length - 4} more</span>}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+
       {investigationCase && (
         <div className="ai-disclaimer">Focused investigation graph: <strong>{investigationCase}</strong>. Expand nodes to inspect related people, accounts, locations, and communications.</div>
       )}

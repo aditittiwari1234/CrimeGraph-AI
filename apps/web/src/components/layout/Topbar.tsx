@@ -130,7 +130,7 @@ export default function Topbar() {
             if (label) setEntityName(label);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     return () => { mounted = false; };
@@ -186,7 +186,7 @@ export default function Topbar() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 9,
+          gap: 8,
           textDecoration: 'none',
           color: 'inherit',
           flexShrink: 0,
@@ -199,17 +199,77 @@ export default function Topbar() {
           alt="CrimeGraph AI Logo"
           style={{ height: 30, width: 'auto', maxHeight: 32, objectFit: 'contain' }}
         />
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: '0.875rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.01em', lineHeight: 1.15 }}>
-            CrimeGraph AI
-          </span>
-          <span style={{ fontSize: '0.58rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
-            NCRB · Intel
-          </span>
-        </div>
-      </Link>
 
-      <div style={{ width: 1, height: 26, background: 'var(--border-primary)', flexShrink: 0, margin: '0 4px' }} />
+      </Link>
+      <div style={{ width: 2, height: 40, background: 'var(--border-primary)', flexShrink: 0, margin: '0 0px' }} />
+
+      {/* User identity chip — display only, no interaction */}
+      {user && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '4px 8px 4px 4px',
+            background: 'rgba(255,255,255,0.04)',
+            flexShrink: 0,
+            cursor: 'default',
+            userSelect: 'none',
+          }}
+          title={`${user.fullName} · ${user.department ?? user.role}`}
+        >
+          {/* Avatar circle — shows photo if set, else initials */}
+          <div style={{
+            width: 35,
+            height: 35,
+            borderRadius: '50%',
+            background: user.photoUrl ? 'transparent' : 'linear-gradient(135deg, var(--color-accent), #6d28d9)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            color: '#fff',
+            flexShrink: 0,
+            letterSpacing: '0.02em',
+            boxShadow: '0 0 0 2px rgba(124,58,237,0.25)',
+            overflow: 'hidden',
+          }}>
+            {user.photoUrl
+              ? <img src={user.photoUrl} alt={user.fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : user.fullName.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+          </div>
+
+          {/* Name + designation */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0, lineHeight: 1.2, minWidth: 0 }}>
+            <span style={{
+              fontSize: '0.95rem',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: 160,
+            }}>
+              {user.fullName}
+            </span>
+            <span style={{
+              fontSize: '0.68rem',
+              color: 'var(--text-muted)',
+              fontWeight: 500,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: 160,
+              textTransform: 'capitalize',
+            }}>
+              {user.department ?? user.role.replace(/_/g, ' ')}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div style={{ width: 2, height: 32, background: 'var(--border-primary)', flexShrink: 0, margin: '0 0px' }} />
 
       {isEvidenceContext && evidenceId ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
@@ -335,89 +395,80 @@ export default function Topbar() {
           </span>
         </div>
       ) : (
-      /* Global Search */
-      <div className="topbar-search" style={{ position: 'relative' }}>
-        <div className="search-input-wrapper">
-          <Search size={15} className="search-icon" />
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Search entities — persons, phones, vehicles, cases..."
-            value={query}
-            onChange={e => handleSearch(e.target.value)}
-            onFocus={() => results.length > 0 && setShowResults(true)}
-            onBlur={() => setTimeout(() => setShowResults(false), 200)}
-            style={{ paddingRight: 12 }}
-          />
-          {searching && (
-            <div style={{ position: 'absolute', right: 12 }}>
-              <div className="loading-spinner" />
+        /* Global Search */
+        <div className="topbar-search" style={{ position: 'relative' }}>
+          <div className="search-input-wrapper">
+            <Search size={15} className="search-icon" />
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Search entities - persons, phones, vehicles, cases..."
+              value={query}
+              onChange={e => handleSearch(e.target.value)}
+              onFocus={() => results.length > 0 && setShowResults(true)}
+              onBlur={() => setTimeout(() => setShowResults(false), 200)}
+              style={{ paddingRight: 12 }}
+            />
+            {searching && (
+              <div style={{ position: 'absolute', right: 12 }}>
+                <div className="loading-spinner" />
+              </div>
+            )}
+          </div>
+
+
+          {showResults && results.length > 0 && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+              background: 'var(--bg-card)', border: '1px solid var(--border-accent)',
+              borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+              zIndex: 1000, overflow: 'hidden',
+            }}>
+              {results.map(r => (
+                <div
+                  key={r.id}
+                  onClick={() => selectResult(r)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 14px', cursor: 'pointer',
+                    borderBottom: '1px solid var(--border-secondary)',
+                    transition: 'background var(--transition-fast)',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span style={{
+                    width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                    background: nodeColors[r.nodeType] || '#64748b',
+                  }} />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)' }}>
+                      {getEntityLabel(r)}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      {r.nodeType} · {r.matchReason}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showResults && results.length === 0 && query.length >= 2 && !searching && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+              background: 'var(--bg-card)', border: '1px solid var(--border-primary)',
+              borderRadius: 'var(--radius-lg)', padding: '14px 16px',
+              color: 'var(--text-muted)', fontSize: '0.875rem', zIndex: 1000,
+            }}>
+              No entities found for "{query}"
             </div>
           )}
         </div>
-
-
-        {showResults && results.length > 0 && (
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
-            background: 'var(--bg-card)', border: '1px solid var(--border-accent)',
-            borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
-            zIndex: 1000, overflow: 'hidden',
-          }}>
-            {results.map(r => (
-              <div
-                key={r.id}
-                onClick={() => selectResult(r)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 14px', cursor: 'pointer',
-                  borderBottom: '1px solid var(--border-secondary)',
-                  transition: 'background var(--transition-fast)',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <span style={{
-                  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                  background: nodeColors[r.nodeType] || '#64748b',
-                }} />
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)' }}>
-                    {getEntityLabel(r)}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {r.nodeType} · {r.matchReason}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {showResults && results.length === 0 && query.length >= 2 && !searching && (
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
-            background: 'var(--bg-card)', border: '1px solid var(--border-primary)',
-            borderRadius: 'var(--radius-lg)', padding: '14px 16px',
-            color: 'var(--text-muted)', fontSize: '0.875rem', zIndex: 1000,
-          }}>
-            No entities found for "{query}"
-          </div>
-        )}
-      </div>
       )}
 
       <div className="topbar-right">
         {/* Classification marker */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
-          background: 'rgba(220, 38, 38, 0.08)', border: '1px solid rgba(220, 38, 38, 0.2)',
-          borderRadius: 'var(--radius-full)', fontSize: '0.65rem', fontWeight: 700,
-          letterSpacing: '0.1em', color: '#b91c1c', textTransform: 'uppercase',
-        }}>
-          <Shield size={10} />
-          Prototype Demo
-        </div>
 
         <button
           className="btn btn-ghost"
@@ -432,10 +483,6 @@ export default function Topbar() {
         </button>
 
         <div style={{ width: 1, height: 24, background: 'var(--border-primary)' }} />
-
-        <div className="user-avatar" title={`${user?.fullName} (${user?.role})`}>
-          {user?.fullName?.charAt(0) || 'U'}
-        </div>
 
         <button className="btn btn-ghost btn-sm" onClick={logout} title="Logout">
           <LogOut size={14} />

@@ -24,6 +24,7 @@ const navItems = [
   { path: '/ai-assistant',   label: 'AI Assistant',       icon: Bot,             section: 'tools' },
   { path: '/evidence',       label: 'Evidence',           icon: Shield,          section: 'tools' },
   { path: '/audit',          label: 'Audit Logs',         icon: BookOpen,        section: 'tools', adminOnly: true },
+  { path: '/users',          label: 'User Management',    icon: Sliders,         section: 'tools', adminOnly: true },
 ];
 
 const sections = [
