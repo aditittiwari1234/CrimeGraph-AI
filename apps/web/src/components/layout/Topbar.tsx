@@ -470,6 +470,7 @@ export default function Topbar() {
   const isEvidenceContext = Boolean(isEvidenceDetail && evidenceId);
   const isEntityContext = Boolean(!isEvidenceContext && entityType && entityId && (isEntityDetail || !investigationId));
   const isInvestigationContext = Boolean(!isEvidenceContext && investigationId && !isEntityDetail);
+  const entityListFilterType = location.pathname === '/entities' ? new URLSearchParams(location.search).get('type') : null;
 
   const entityTab = location.pathname === '/network'
     ? 'network graph'
@@ -694,6 +695,36 @@ export default function Topbar() {
           <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem', flexShrink: 0 }}>&gt;</span>
           <span style={{ color: '#7c3aed', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap', flexShrink: 0 }}>
             {selectedOption === 'settings' ? 'ACCESS & SETTINGS' : selectedOption}
+          </span>
+        </div>
+      ) : entityListFilterType ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <span
+            onClick={() => navigate('/entities')}
+            style={{
+              color: 'var(--text-muted)',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+            title="Back to All Entities"
+          >
+            Entities
+          </span>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem', flexShrink: 0 }}>&gt;</span>
+          <span
+            style={{
+              color: nodeColors[entityListFilterType] || '#2563eb',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+            }}
+          >
+            {entityListFilterType}
           </span>
         </div>
       ) : (

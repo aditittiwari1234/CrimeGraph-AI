@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Filter, Users, Phone, Truck, Building2, CreditCard, MapPin, AlertTriangle, CheckCircle, Flag } from 'lucide-react';
 import {
   PERSONS, PHONES, VEHICLES, ORGANISATIONS, ACCOUNTS, LOCATIONS,
@@ -53,10 +53,18 @@ const PAGE_SIZE = 20;
 
 export default function EntitiesPage() {
   const navigate = useNavigate();
-  const [typeFilter, setTypeFilter] = useState<string>('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const typeFilter = searchParams.get('type') || '';
   const [flaggedOnly, setFlaggedOnly] = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const urlSearch = searchParams.get('search');
+    if (urlSearch !== null && urlSearch !== search) {
+      setSearch(urlSearch);
+    }
+  }, [searchParams]);
 
   const allEntities: AnyEntity[] = useMemo(() => [
     ...PERSONS, ...PHONES, ...VEHICLES, ...ORGANISATIONS, ...ACCOUNTS, ...LOCATIONS,
@@ -64,7 +72,7 @@ export default function EntitiesPage() {
 
   const filtered = useMemo(() => {
     return allEntities.filter(e => {
-      if (typeFilter && e.nodeType !== typeFilter) return false;
+      if (typeFilter && e.nodeType.toLowerCase() !== typeFilter.toLowerCase()) return false;
       if (flaggedOnly && !isFlagged(e)) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -79,7 +87,16 @@ export default function EntitiesPage() {
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
 
-  const handleTypeFilter = (t: string) => { setTypeFilter(t === typeFilter ? '' : t); setPage(1); };
+  const handleTypeFilter = (t: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (!t || t.toLowerCase() === typeFilter.toLowerCase()) {
+      nextParams.delete('type');
+    } else {
+      nextParams.set('type', t);
+    }
+    setSearchParams(nextParams);
+    setPage(1);
+  };
   const handleSearch = (v: string) => { setSearch(v); setPage(1); };
 
   return (
@@ -139,7 +156,7 @@ export default function EntitiesPage() {
         </button>
 
         {typeFilter && (
-          <button className="btn btn-secondary btn-sm" onClick={() => { setTypeFilter(''); setPage(1); }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => handleTypeFilter('')}>
             Clear Filter ✕
           </button>
         )}
