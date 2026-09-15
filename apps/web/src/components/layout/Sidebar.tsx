@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, FolderOpen, Network, Users, FileText,
@@ -6,8 +6,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { canManageDatabases, canViewAuditLogs, isInspectorRole } from '../../lib/permissions';
-import api from '../../lib/api';
-import { ALL_ENTITIES, type AnyEntity } from '../../data/dataset';
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
@@ -39,16 +37,6 @@ const nodeColors: Record<string, string> = {
   Case: '#06b6d4', Event: '#ec4899',
 };
 
-function getEntityLabel(e: AnyEntity): string {
-  if (e.nodeType === 'Person') return e.name;
-  if (e.nodeType === 'Phone') return e.number;
-  if (e.nodeType === 'Vehicle') return e.licensePlate;
-  if (e.nodeType === 'Organization') return e.name;
-  if (e.nodeType === 'Account') return e.accountNumber;
-  if (e.nodeType === 'Location') return e.name;
-  return (e as any).name || (e as any).number || (e as any).licensePlate || (e as any).accountNumber || e.id;
-}
-
 
 export default function Sidebar() {
   const { user } = useAuth();
@@ -78,32 +66,6 @@ export default function Sidebar() {
       ? new URLSearchParams(location.search).get('entityId') || new URLSearchParams(location.search).get('entity')
       : null;
   const currentEntityTab = new URLSearchParams(location.search).get('tab') || 'details';
-  const [entityLabel, setEntityLabel] = useState<string | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    if (entityType && entityId) {
-      const found = ALL_ENTITIES.find(e => e.nodeType === entityType && e.id === entityId);
-      if (found) {
-        setEntityLabel(getEntityLabel(found));
-      } else {
-        setEntityLabel(`${entityType} ${entityId}`);
-      }
-
-      api.get(`/api/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`)
-        .then(res => {
-          if (mounted && res.data?.entity) {
-            const e = res.data.entity;
-            const label = e.name || e.number || e.licensePlate || e.accountNumber || e.id;
-            if (label) setEntityLabel(label);
-          }
-        })
-        .catch(() => { });
-    } else {
-      setEntityLabel(null);
-    }
-    return () => { mounted = false; };
-  }, [entityType, entityId]);
 
   // Evidence context
   const evidenceMatch = location.pathname.match(/^\/evidence\/([^/]+)$/);
@@ -112,32 +74,6 @@ export default function Sidebar() {
     ? decodeURIComponent(evidenceMatch[1])
     : null;
   const currentEvidenceTab = new URLSearchParams(location.search).get('tab') || 'details';
-  const [evidenceMeta, setEvidenceMeta] = useState<{ type: string; title?: string } | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    if (evidenceId) {
-      api.get(`/api/evidence/${encodeURIComponent(evidenceId)}`)
-        .then(res => {
-          if (mounted && res.data) {
-            const ev = res.data;
-            const blockData = typeof ev.block_data === 'string' ? JSON.parse(ev.block_data) : ev.block_data;
-            setEvidenceMeta({
-              type: ev.evidence_type || 'document',
-              title: blockData?.title || ev.evidence_id,
-            });
-          }
-        })
-        .catch(() => {
-          if (mounted) {
-            setEvidenceMeta({ type: 'document', title: evidenceId });
-          }
-        });
-    } else {
-      setEvidenceMeta(null);
-    }
-    return () => { mounted = false; };
-  }, [evidenceId]);
 
   const isEvidenceContext = Boolean(isEvidenceDetail && evidenceId);
   const isEntityContext = Boolean(!isEvidenceContext && entityType && entityId && (isEntityDetail || !investigationId));
@@ -314,7 +250,7 @@ export default function Sidebar() {
               <NavLink
                 key={item.path}
                 to={item.path}
-                style={({ isActive }) => {
+                style={() => {
                   const itemIsActive = isEvidenceDetail && currentEvidenceTab === item.tab;
                   return {
                     display: 'flex', alignItems: 'center', justifyContent: navItemJustify, gap: navItemGap,
