@@ -20,11 +20,21 @@ router.post('/upload', async (req: AuthenticatedRequest, res: Response): Promise
     // Simulate NLP entity extraction
     const { entities, relationships } = await performNLPExtraction(content || '');
 
+    let targetInvId = investigationId || null;
+    let targetCaseNum = null;
+    if (investigationId) {
+      const invCheck = await query('SELECT id, case_number FROM investigations WHERE id::text = $1 OR case_number = $1', [investigationId]);
+      if (invCheck.rows.length > 0) {
+        targetInvId = invCheck.rows[0].id;
+        targetCaseNum = invCheck.rows[0].case_number;
+      }
+    }
+
     const result = await query(
       `INSERT INTO documents (id, investigation_id, filename, original_name, document_type, status, extracted_entities, extracted_relationships, analysis_metadata, uploaded_by)
        VALUES ($1, $2, $3, $4, $5, 'analyzed', $6, $7, $8, $9) RETURNING *`,
       [
-        documentId, investigationId, filename, originalName || filename,
+        documentId, targetInvId, filename, originalName || filename,
         documentType || 'other', JSON.stringify(entities), JSON.stringify(relationships),
         JSON.stringify({ extractionMethod: 'NLP-NER-v1', language: 'en', processedAt: new Date().toISOString() }),
         req.user?.id,
@@ -32,16 +42,17 @@ router.post('/upload', async (req: AuthenticatedRequest, res: Response): Promise
     );
 
     // Create evidence ledger entry
-    const evidenceHash = generateEvidenceHash({ documentId, filename, content: content?.substring(0, 100) || '' });
+    const evidenceHash = generateEvidenceHash({ documentId, filename, content: content?.substring(0, 100) || '', investigationId: targetInvId, caseNumber: targetCaseNum });
     await query(
-      `INSERT INTO evidence_ledger (evidence_id, evidence_type, entity_ref, source_document, data_hash, previous_hash, block_data, created_by)
+      `INSERT INTO evidence_ledger (evidence_id, evidence_type, entity_ref, source_document, data_hash, previous_hash, block_data, created_by, investigation_id)
        SELECT $1, 'document', $2, $3, $4,
          COALESCE((SELECT data_hash FROM evidence_ledger ORDER BY record_number DESC LIMIT 1), '0000000000000000000000000000000000000000000000000000000000000000'),
-         $5, $6`,
+         $5, $6, $7`,
       [
         `EVD-DOC-${documentId.slice(0, 8).toUpperCase()}`, documentId, filename, evidenceHash,
-        JSON.stringify({ documentId, filename, type: documentType, extractedAt: new Date().toISOString() }),
+        JSON.stringify({ documentId, filename, type: documentType, investigationId: targetInvId, caseNumber: targetCaseNum, extractedAt: new Date().toISOString() }),
         req.user?.id,
+        targetInvId,
       ]
     );
 
@@ -151,7 +162,10 @@ router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> 
     const params: unknown[] = [];
     const conditions: string[] = [];
 
-    if (investigationId) { conditions.push(`d.investigation_id = $${params.length + 1}`); params.push(investigationId); }
+    if (investigationId) {
+      conditions.push(`(d.investigation_id = $${params.length + 1} OR d.investigation_id IN (SELECT id FROM investigations WHERE case_number = $${params.length + 1} OR id = $${params.length + 1}))`);
+      params.push(investigationId);
+    }
     if (documentType) { conditions.push(`d.document_type = $${params.length + 1}`); params.push(documentType); }
     if (status) { conditions.push(`d.status = $${params.length + 1}`); params.push(status); }
 

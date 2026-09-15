@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Clock, Phone, DollarSign, MapPin, Users } from 'lucide-react';
 
 const TIMELINE_EVENTS = [
@@ -21,12 +22,15 @@ const TYPE_CONFIG: Record<string, { icon: any; color: string; label: string }> =
 };
 
 export default function TimelinePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const entityId = searchParams.get('entity');
   const [typeFilter, setTypeFilter] = useState('');
   const [severityFilter, setSeverityFilter] = useState('');
 
   const filtered = TIMELINE_EVENTS.filter(e =>
     (!typeFilter || e.type === typeFilter) &&
-    (!severityFilter || e.severity === severityFilter)
+    (!severityFilter || e.severity === severityFilter) &&
+    (!entityId || e.entities.includes(entityId))
   );
 
   return (
@@ -35,6 +39,28 @@ export default function TimelinePage() {
         <h1 style={{ fontSize: '1.5rem', marginBottom: 4 }}>Investigation Timeline</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Chronological view of all relevant events across the investigation dataset</p>
       </div>
+
+      {entityId && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 16px', marginBottom: 20,
+          background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.2)',
+          borderRadius: 8, fontSize: '0.85rem', color: '#1e40af'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontWeight: 600 }}>Filtering events involving entity:</span>
+            <span className="font-mono" style={{ fontWeight: 700 }}>{entityId}</span>
+            <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>({filtered.length} events found)</span>
+          </div>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setSearchParams({})}
+            style={{ fontSize: '0.75rem', color: '#2563eb' }}
+          >
+            Show All Events
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>

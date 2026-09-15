@@ -44,9 +44,9 @@ export default function AddDatabaseModal() {
   const [testResult, setTestResult] = useState<{ success: boolean; latencyMs: number; message: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (!isAddModalOpen) return null;
-
   const isAdmin = user?.role === 'administrator';
+
+  if (!isAddModalOpen || !isAdmin) return null;
 
   const parseUriAndPopulate = (val: string) => {
     setConnectionUri(val);

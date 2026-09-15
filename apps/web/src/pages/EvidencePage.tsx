@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Shield, CheckCircle, XCircle, AlertCircle, Search } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Shield, CheckCircle, XCircle, AlertCircle, Search, ArrowLeft, FolderOpen } from 'lucide-react';
 import api from '../lib/api';
 
 const DEMO_EVIDENCE = [
@@ -20,16 +21,24 @@ interface VerifyResult {
 }
 
 export default function EvidencePage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const investigationParam = searchParams.get('investigation');
+
   const [evidence, setEvidence] = useState(DEMO_EVIDENCE);
   const [verifying, setVerifying] = useState<string | null>(null);
   const [verifyResults, setVerifyResults] = useState<Record<string, VerifyResult>>({});
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    api.get('/api/evidence?limit=50').then(res => {
+    const url = investigationParam
+      ? `/api/evidence?investigationId=${encodeURIComponent(investigationParam)}&limit=50`
+      : '/api/evidence?limit=50';
+
+    api.get(url).then(res => {
       if (res.data.evidence?.length > 0) setEvidence(res.data.evidence);
     }).catch(() => {});
-  }, []);
+  }, [investigationParam]);
 
   const verifyEvidence = async (evidenceId: string) => {
     setVerifying(evidenceId);
@@ -72,6 +81,52 @@ export default function EvidencePage() {
         </div>
       </div>
 
+      {/* Contextual Investigation Filter Banner */}
+      {investigationParam && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 20,
+            background: '#f5f3ff',
+            borderColor: '#ddd6fe',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            padding: '12px 18px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <FolderOpen size={18} color="#7c3aed" />
+            <div>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#5b21b6' }}>
+                Filtered for Investigation: {investigationParam}
+              </span>
+              <div style={{ fontSize: '0.75rem', color: '#6d28d9' }}>
+                Showing only cryptographic ledger blocks and proofs associated with this investigation.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => navigate(`/investigations/${encodeURIComponent(investigationParam)}?tab=evidence`)}
+              style={{ fontSize: '0.78rem' }}
+            >
+              <ArrowLeft size={13} /> Return to Investigation
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => navigate('/evidence')}
+              style={{ fontSize: '0.78rem' }}
+            >
+              Show All Evidence
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Blockchain explanation */}
       <div className="card" style={{ marginBottom: 20, background: 'rgba(124,58,237,0.04)', borderColor: '#ddd6fe' }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -110,7 +165,12 @@ export default function EvidencePage() {
 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                    <span className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-accent)', fontWeight: 600 }}>
+                    <span
+                      className="font-mono"
+                      onClick={() => navigate(`/evidence/${encodeURIComponent(evd.evidence_id)}`)}
+                      style={{ fontSize: '0.85rem', color: '#2563eb', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                      title="Inspect full evidence ledger record"
+                    >
                       {evd.evidence_id}
                     </span>
                     <span className="badge badge-neutral">{evd.evidence_type.replace(/_/g, ' ')}</span>
@@ -158,14 +218,22 @@ export default function EvidencePage() {
                     </div>
                   )}
 
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => verifyEvidence(evd.evidence_id)}
-                    disabled={verifying === evd.evidence_id}
-                  >
-                    <Shield size={12} />
-                    {verifying === evd.evidence_id ? 'Verifying...' : 'Verify Integrity'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => verifyEvidence(evd.evidence_id)}
+                      disabled={verifying === evd.evidence_id}
+                    >
+                      <Shield size={12} />
+                      {verifying === evd.evidence_id ? 'Verifying...' : 'Verify Integrity'}
+                    </button>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => navigate(`/evidence/${encodeURIComponent(evd.evidence_id)}`)}
+                    >
+                      Inspect Record
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

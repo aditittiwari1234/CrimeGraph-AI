@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Plus, FolderOpen, Search, ChevronRight, AlertTriangle } from 'lucide-react';
 import api from '../lib/api';
@@ -18,6 +19,14 @@ interface Investigation {
   tags: string[];
 }
 
+interface Officer {
+  id: string;
+  full_name: string;
+  role: string;
+  badge_number?: string;
+  department?: string;
+}
+
 export default function InvestigationsPage() {
   const navigate = useNavigate();
   const [investigations, setInvestigations] = useState<Investigation[]>([]);
@@ -25,7 +34,8 @@ export default function InvestigationsPage() {
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [newInv, setNewInv] = useState({ title: '', description: '', priority: 'medium' });
+  const [officers, setOfficers] = useState<Officer[]>([]);
+  const [newInv, setNewInv] = useState({ title: '', description: '', priority: 'medium', assignedTo: '' });
 
   const load = () => {
     api.get('/api/investigations?limit=50')
@@ -43,6 +53,12 @@ export default function InvestigationsPage() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    api.get('/api/investigations/officers')
+      .then(res => setOfficers(res.data.officers || []))
+      .catch(() => setOfficers([]));
+  }, []);
+
   const createInvestigation = async () => {
     if (!newInv.title) return;
     setCreating(true);
@@ -50,7 +66,7 @@ export default function InvestigationsPage() {
       const res = await api.post('/api/investigations', newInv);
       setInvestigations(prev => [res.data, ...prev]);
       setShowCreate(false);
-      setNewInv({ title: '', description: '', priority: 'medium' });
+      setNewInv({ title: '', description: '', priority: 'medium', assignedTo: '' });
     } catch {
       // no-op
     } finally {
@@ -80,14 +96,26 @@ export default function InvestigationsPage() {
       </div>
 
       {/* Create modal */}
-      {showCreate && (
+      {showCreate && createPortal(
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+          position: 'fixed',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 20,
+          zIndex: 200,
+          pointerEvents: 'none',
         }}>
-          <div className="card" style={{ width: 480, animation: 'fadeIn 0.2s ease' }}>
+          <div className="card" style={{
+            width: 'min(620px, calc(100vw - 40px))',
+            animation: 'fadeIn 0.2s ease',
+            boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)',
+            border: '1px solid #cbd5e1',
+            pointerEvents: 'auto',
+          }}>
             <h3 style={{ marginBottom: 16 }}>Create New Investigation</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="form-group">
                 <label className="form-label">Title *</label>
                 <input className="form-input" placeholder="Investigation title..." value={newInv.title} onChange={e => setNewInv(p => ({ ...p, title: e.target.value }))} />
@@ -105,6 +133,24 @@ export default function InvestigationsPage() {
                   <option value="critical">Critical</option>
                 </select>
               </div>
+              <div className="form-group">
+                <label className="form-label">Give access to officer</label>
+                <select
+                  className="form-select"
+                  value={newInv.assignedTo}
+                  onChange={e => setNewInv(p => ({ ...p, assignedTo: e.target.value }))}
+                >
+                  <option value="">Assign to me</option>
+                  {officers.map(officer => (
+                    <option key={officer.id} value={officer.id}>
+                      {officer.full_name} · {officer.role.replace(/_/g, ' ')}{officer.badge_number ? ` · ${officer.badge_number}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <span style={{ display: 'block', marginTop: 5, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  The selected officer will be assigned access to this investigation.
+                </span>
+              </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                 <button className="btn btn-primary" onClick={createInvestigation} disabled={creating || !newInv.title}>
                   {creating ? 'Creating...' : 'Create Investigation'}
@@ -113,7 +159,8 @@ export default function InvestigationsPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Search */}
@@ -142,7 +189,7 @@ export default function InvestigationsPage() {
                 cursor: 'pointer', borderLeft: `3px solid ${priorityColor[inv.priority] || '#94a3b8'}`,
                 transition: 'all var(--transition-fast)',
               }}
-              onClick={() => navigate(`/investigations/${inv.id}`)}
+              onClick={() => navigate(`/investigations/${inv.case_number}`)}
               onMouseEnter={e => (e.currentTarget.style.borderColor = priorityColor[inv.priority])}
               onMouseLeave={e => {}}
             >

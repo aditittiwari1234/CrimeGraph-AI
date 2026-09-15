@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { FileText, Upload, Search, Eye } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { FileText, Upload, Search, Eye, ArrowLeft, FolderOpen } from 'lucide-react';
 import api from '../lib/api';
 
 const DOCUMENT_TYPES = ['fir', 'police_report', 'intelligence_report', 'surveillance_report', 'case_notes', 'cdr', 'financial', 'other'];
@@ -13,6 +14,10 @@ According to the report, the three individuals met at Lotus Hotel in Mumbai on 0
 Subsequent financial analysis revealed transactions from Shree Trading Co. to Apex Logistics amounting to Rs. 5,00,000 on 20 January 2026.`;
 
 export default function DocumentsPage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const investigationParam = searchParams.get('investigation');
+
   const [content, setContent] = useState('');
   const [docType, setDocType] = useState('fir');
   const [filename, setFilename] = useState('');
@@ -25,8 +30,10 @@ export default function DocumentsPage() {
     setResult(null);
     try {
       const res = await api.post('/api/documents/upload', {
-        content, documentType: docType,
+        content,
+        documentType: docType,
         originalName: filename || `document_${Date.now()}.txt`,
+        investigationId: investigationParam || undefined,
       });
       setResult(res.data);
     } catch {
@@ -65,6 +72,51 @@ export default function DocumentsPage() {
         <h1 style={{ fontSize: '1.5rem', marginBottom: 4 }}>Document Analysis</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>AI-powered NLP entity extraction from FIRs, police reports, and intelligence documents</p>
       </div>
+
+      {investigationParam && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 20,
+            background: '#eff6ff',
+            borderColor: '#bfdbfe',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            padding: '12px 18px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <FolderOpen size={18} color="#2563eb" />
+            <div>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e40af' }}>
+                Ingesting Source for Investigation: {investigationParam}
+              </span>
+              <div style={{ fontSize: '0.75rem', color: '#1d4ed8' }}>
+                Uploaded files and extracted entities will automatically link to this case's intelligence dossier and evidence ledger.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => navigate(`/investigations/${encodeURIComponent(investigationParam)}?tab=sources`)}
+              style={{ fontSize: '0.78rem' }}
+            >
+              <ArrowLeft size={13} /> Return to Investigation Sources
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => navigate('/documents')}
+              style={{ fontSize: '0.78rem' }}
+            >
+              Clear Filter
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: result ? '1fr 1fr' : '1fr', gap: 20 }}>
         {/* Upload / Input */}

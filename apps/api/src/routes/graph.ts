@@ -7,6 +7,78 @@ import { logger } from '../utils/logger';
 const router = Router();
 router.use(authenticate);
 
+// GET /api/graph/investigation/:caseId — graph for one investigation case
+router.get('/investigation/:caseId', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const caseId = String(req.params.caseId || '').trim();
+  if (!caseId) {
+    res.status(400).json({ error: 'Case ID required' });
+    return;
+  }
+
+  try {
+    const result = await runCypherQuery(`
+      MATCH (c:Case)
+      WHERE c.caseNumber = $caseId OR c.caseNumber = replace($caseId, 'CASE-', 'FIR-')
+      OPTIONAL MATCH (c)-[caseRel]-(firstNeighbor)
+      OPTIONAL MATCH (firstNeighbor)-[networkRel]-(neighbor)
+      WITH c, collect(DISTINCT { source: c, rel: caseRel, target: firstNeighbor }) +
+           collect(DISTINCT { source: firstNeighbor, rel: networkRel, target: neighbor }) as links
+      UNWIND links as link
+      WITH c, link
+      WHERE link.rel IS NOT NULL AND link.source IS NOT NULL AND link.target IS NOT NULL
+      RETURN c,
+        collect(DISTINCT {
+          id: link.source.id,
+          nodeType: labels(link.source)[0],
+          properties: properties(link.source)
+        }) + collect(DISTINCT {
+          id: link.target.id,
+          nodeType: labels(link.target)[0],
+          properties: properties(link.target)
+        }) as linkedNodes,
+        collect(DISTINCT {
+          source: link.source.id,
+          target: link.target.id,
+          type: type(link.rel),
+          properties: properties(link.rel)
+        }) as relationships
+    `, { caseId });
+
+    if (result.records.length === 0) {
+      res.json({ nodes: [], edges: [], caseId, message: 'No graph records found for this case.' });
+      return;
+    }
+
+    const nodes = new Map<string, Record<string, unknown>>();
+    const edges = new Map<string, Record<string, unknown>>();
+    for (const record of result.records) {
+      const caseNode = record.get('c');
+      const linkedNodes = record.get('linkedNodes') || [];
+      const relationships = record.get('relationships') || [];
+      [caseNode, ...linkedNodes].forEach((node: any) => {
+        if (node?.properties?.id || node?.id) {
+          const id = node.properties?.id || node.id;
+          nodes.set(id, { id, nodeType: node.nodeType || node.labels?.[0] || 'Case', ...(node.properties || {}) });
+        }
+      });
+      relationships.forEach((rel: any) => {
+        if (!rel?.source || !rel?.target) return;
+        const source = rel.source;
+        const target = rel.target;
+        if (source && target) {
+          const key = `${source}-${rel.type}-${target}`;
+          edges.set(key, { id: key, source, target, type: rel.type, ...(rel.properties || {}) });
+        }
+      });
+    }
+
+    res.json({ nodes: Array.from(nodes.values()), edges: Array.from(edges.values()), caseId });
+  } catch (error) {
+    logger.error('Investigation graph error:', error);
+    res.status(500).json({ error: 'Failed to load investigation graph' });
+  }
+});
+
 // POST /api/graph/path — find shortest path between two entities
 router.post('/path', [
   body('fromId').notEmpty(),

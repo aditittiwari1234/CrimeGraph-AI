@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import cytoscape from 'cytoscape';
 import type { Core, NodeSingular } from 'cytoscape';
 import {
@@ -27,6 +28,21 @@ interface GraphEdge {
   timestamp?: string;
   relSource?: string;
   recordRef?: string;
+}
+
+interface OfficerSummary {
+  id: string;
+  full_name: string;
+  role: string;
+  badge_number?: string;
+}
+
+interface CaseSummary {
+  id: string;
+  case_number: string;
+  title: string;
+  assigned_to_name?: string;
+  entity_count?: string;
 }
 
 const NODE_COLORS: Record<string, string> = {
@@ -62,6 +78,10 @@ function getNodeLabel(node: GraphNode): string {
 }
 
 export default function NetworkGraphPage() {
+  const [searchParams] = useSearchParams();
+  const investigationCase = searchParams.get('investigation');
+  const entityIdParam = searchParams.get('entityId') || searchParams.get('entity');
+  const entityTypeParam = searchParams.get('entityType') || 'Person';
   const cyRef = useRef<HTMLDivElement>(null);
   const cyInstance = useRef<Core | null>(null);
   const [loading, setLoading] = useState(false);
@@ -76,6 +96,9 @@ export default function NetworkGraphPage() {
   const [pathNodes, setPathNodes] = useState<GraphNode[]>([]);
   const [pathLoading, setPathLoading] = useState(false);
   const [pathResult, setPathResult] = useState<Record<string, unknown>[] | null>(null);
+  const [officers, setOfficers] = useState<OfficerSummary[]>([]);
+  const [cases, setCases] = useState<CaseSummary[]>([]);
+  const [graphPeople, setGraphPeople] = useState<GraphNode[]>([]);
 
   const initCytoscape = useCallback(() => {
     if (!cyRef.current) return;
@@ -221,12 +244,12 @@ export default function NetworkGraphPage() {
     return cy;
   }, [pathMode]);
 
-  // Load demo network on mount
+  // Load the selected investigation network, or the overall network by default.
   useEffect(() => {
     const cy = initCytoscape();
     if (!cy) return;
     loadDemoNetwork(cy);
-  }, []);
+  }, [investigationCase, entityIdParam, entityTypeParam]);
 
   const loadDemoNetwork = async (cy?: Core) => {
     const instance = cy || cyInstance.current;
@@ -234,9 +257,14 @@ export default function NetworkGraphPage() {
     setLoading(true);
 
     try {
-      const res = await api.get('/api/entities/Person/P001/network?depth=2&limit=80');
+      const res = investigationCase
+        ? await api.get(`/api/graph/investigation/${encodeURIComponent(investigationCase)}`)
+        : entityIdParam
+          ? await api.get(`/api/entities/${encodeURIComponent(entityTypeParam)}/${encodeURIComponent(entityIdParam)}/network?depth=2&limit=80`)
+          : await api.get('/api/entities/Person/P001/network?depth=2&limit=80');
       const { nodes, edges } = res.data;
-      renderGraph(instance, nodes, edges);
+      if (nodes?.length || investigationCase || entityIdParam) renderGraph(instance, nodes || [], edges || []);
+      else renderDemoGraph(instance);
     } catch {
       // Use synthetic demo data
       renderDemoGraph(instance);
@@ -249,25 +277,27 @@ export default function NetworkGraphPage() {
     cy.elements().remove();
 
     const cyNodes = nodes.map(n => ({
+      group: 'nodes' as const,
       data: {
         id: n.id,
-        label: getNodeLabel(n),
+        label: n.name || n.number || n.licensePlate || n.accountNumber || n.id,
         nodeType: n.nodeType,
         ...n,
       },
     }));
 
     const cyEdges = edges.map((e, i) => ({
+      group: 'edges' as const,
       data: {
-        id: e.id || `e-${i}`,
+        id: e.id || `edge-${i}`,
         source: e.source,
         target: e.target,
-        label: e.type?.replace(/_/g, ' '),
         type: e.type,
-        confidence: e.confidence,
-        timestamp: e.timestamp,
+        confidence: e.confidence || 0.8,
+        label: e.type.replace(/_/g, ' '),
         relSource: e.relSource,
         recordRef: e.recordRef,
+        timestamp: e.timestamp,
       },
     }));
 
@@ -286,7 +316,36 @@ export default function NetworkGraphPage() {
 
     setNodeCount(cyNodes.length);
     setEdgeCount(cyEdges.length);
+    setGraphPeople(nodes.filter(node => node.nodeType === 'Person').slice(0, 12));
+
+    if (entityIdParam) {
+      setTimeout(() => {
+        const target = cy.$(`node[id = "${entityIdParam}"]`);
+        if (target && target.length > 0) {
+          setSelectedNode(target.data());
+          cy.elements().removeClass('highlighted dimmed');
+          const neighborhood = target.closedNeighborhood();
+          cy.elements().not(neighborhood).addClass('dimmed');
+          neighborhood.addClass('highlighted');
+          cy.animate({ center: { eles: target }, zoom: 1.5, duration: 400 });
+        }
+      }, 600);
+    }
   };
+
+  useEffect(() => {
+    if (investigationCase || entityIdParam) return;
+    Promise.all([
+      api.get('/api/investigations/officers'),
+      api.get('/api/investigations?limit=50'),
+    ]).then(([officerResponse, caseResponse]) => {
+      setOfficers(officerResponse.data.officers || []);
+      setCases(caseResponse.data.investigations || []);
+    }).catch(() => {
+      setOfficers([]);
+      setCases([]);
+    });
+  }, [investigationCase, entityIdParam]);
 
   const renderDemoGraph = (cy: Core) => {
     const demoNodes: GraphNode[] = (ALL_ENTITIES as any[]).map(e => ({
@@ -407,6 +466,48 @@ export default function NetworkGraphPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - var(--topbar-height) - 48px)', gap: 12 }}>
+      {!investigationCase && !entityIdParam && (
+        <div className="card" style={{ padding: '12px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+            <div>
+              <h3 style={{ fontSize: '0.95rem', marginBottom: 2 }}>Investigator Network Overview</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>Inspectors, assigned cases, and people represented in the overall graph</p>
+            </div>
+            <span className="badge badge-info">{graphPeople.length} people in view</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <div>
+              <div className="stat-label" style={{ marginBottom: 6 }}>Inspectors</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {officers.slice(0, 4).map(officer => <span key={officer.id} className="badge badge-neutral">{officer.full_name}</span>)}
+                {officers.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>No officers loaded</span>}
+              </div>
+            </div>
+            <div>
+              <div className="stat-label" style={{ marginBottom: 6 }}>Assigned Cases</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 54, overflowY: 'auto' }}>
+                {cases.slice(0, 3).map(item => <span key={item.id} style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>{item.case_number} · {item.assigned_to_name || 'Unassigned'}</span>)}
+                {cases.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>No cases loaded</span>}
+              </div>
+            </div>
+            <div>
+              <div className="stat-label" style={{ marginBottom: 6 }}>People in Graph</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {graphPeople.slice(0, 4).map(person => <span key={person.id} className="badge badge-neutral">{getNodeLabel(person)}</span>)}
+                {graphPeople.length > 4 && <span className="badge badge-info">+{graphPeople.length - 4} more</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {investigationCase && (
+        <div className="ai-disclaimer">Focused investigation graph: <strong>{investigationCase}</strong>. Expand nodes to inspect related people, accounts, locations, and communications.</div>
+      )}
+      {entityIdParam && (
+        <div className="ai-disclaimer">
+          Focused entity graph: <strong>{entityTypeParam} · {entityIdParam}</strong>. Exploring connections, direct relationships, and link predictions.
+        </div>
+      )}
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

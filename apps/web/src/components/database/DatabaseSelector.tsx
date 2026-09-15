@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useDatabases, type DatabaseConnection } from '../../contexts/DatabaseContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { canManageDatabases } from '../../lib/permissions';
 
 interface DatabaseSelectorProps {
   compact?: boolean;
@@ -24,6 +25,7 @@ const ENGINE_LABELS: Record<string, { label: string; color: string; bg: string }
 export default function DatabaseSelector({ compact = false }: DatabaseSelectorProps) {
   const { databases, activeDatabase, setActiveDatabaseId, setIsAddModalOpen, syncDatabase, removeDatabase } = useDatabases();
   const { user } = useAuth();
+  const canManage = canManageDatabases(user?.role);
   const [isOpen, setIsOpen] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -56,7 +58,7 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
   if (!activeDatabase) {
     if (compact) {
       return (
-        <button
+        canManage ? <button
           onClick={() => setIsAddModalOpen(true)}
           style={{
             display: 'flex',
@@ -75,7 +77,7 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
         >
           <Plus size={13} />
           <span>Connect Database</span>
-        </button>
+        </button> : null
       );
     }
 
@@ -103,14 +105,14 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
             </div>
           </div>
         </div>
-        <button
+        {canManage && <button
           onClick={() => setIsAddModalOpen(true)}
           className="btn btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', padding: '7px 16px' }}
         >
           <Plus size={14} />
           <span>Connect Database</span>
-        </button>
+        </button>}
       </div>
     );
   }
@@ -352,7 +354,7 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
 
         {/* Action Controls & Switcher */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
-          <button
+          {canManage && <button
             onClick={() => setIsOpen(prev => !prev)}
             className="btn btn-secondary"
             style={{
@@ -363,7 +365,7 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
             <Server size={14} color="#2563eb" />
             <span>Switch Database ({databases.length})</span>
             <ChevronDown size={14} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />
-          </button>
+          </button>}
 
           <button
             onClick={() => setIsAddModalOpen(true)}
@@ -467,7 +469,7 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
                           <RefreshCw size={13} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
                         </button>
 
-                        {!db.isDefault && (
+                        {canManage && !db.isDefault && (
                           <button
                             title="Disconnect database"
                             onClick={e => handleDelete(e, db.id)}
@@ -496,9 +498,9 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
                 justifyContent: 'space-between',
               }}>
                 <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                  Admin privileges enabled
+                  {canManage ? 'Admin privileges enabled' : 'Read-only database access'}
                 </span>
-                <button
+                {canManage && <button
                   onClick={() => {
                     setIsOpen(false);
                     setIsAddModalOpen(true);
@@ -508,7 +510,7 @@ export default function DatabaseSelector({ compact = false }: DatabaseSelectorPr
                 >
                   <Plus size={12} />
                   Connect New DB
-                </button>
+                </button>}
               </div>
             </div>
           )}

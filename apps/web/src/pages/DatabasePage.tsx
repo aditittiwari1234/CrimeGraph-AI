@@ -8,12 +8,16 @@ import {
 } from 'lucide-react';
 import { useDatabases } from '../contexts/DatabaseContext';
 import DatabaseSelector from '../components/database/DatabaseSelector';
+import { useAuth } from '../contexts/AuthContext';
+import { canManageDatabases } from '../lib/permissions';
 
 export default function DatabasePage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const { activeDatabase, databases, setIsAddModalOpen } = useDatabases();
+  const { user } = useAuth();
+  const canManage = canManageDatabases(user?.role);
 
   const isMongo = activeDatabase?.type === 'mongodb';
 
@@ -451,22 +455,22 @@ export default function DatabasePage() {
                 Refresh
               </button>
             )}
-            <button
+            {canManage && <button
               onClick={() => setIsAddModalOpen(true)}
               className="btn btn-primary"
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
             >
               <Plus size={15} />
               Connect Database
-            </button>
-            <button
+            </button>}
+            {canManage && <button
               onClick={() => navigate('/data-sources')}
               className="btn btn-secondary"
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
             >
               <HardDrive size={15} />
               Data Sources Hub
-            </button>
+            </button>}
           </div>
         </div>
 
