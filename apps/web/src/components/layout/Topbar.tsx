@@ -1,51 +1,46 @@
 import { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import {
-  Search, Bell, LogOut, X, Sliders,
-  LayoutDashboard, FolderOpen, Network, Users, FileText,
-  Clock, Bot, Shield, BookOpen, Database, Server, Settings, UserCheck,
-} from 'lucide-react';
+import { Search, Bell, LogOut, X, Sliders } from 'lucide-react';
 import logoImg from '../../assets/Logo.png';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
 import { ALL_ENTITIES, type AnyEntity } from '../../data/dataset';
 
-const PAGE_ROUTES: Record<string, { title: string; icon: any }> = {
-  '/dashboard': { title: 'Dashboard', icon: LayoutDashboard },
-  '/inspector': { title: 'Inspector Home', icon: UserCheck },
-  '/investigations': { title: 'Investigations', icon: FolderOpen },
-  '/network': { title: 'Network Graph', icon: Network },
-  '/database': { title: 'Database Explorer', icon: Database },
-  '/entities': { title: 'Entities', icon: Users },
-  '/timeline': { title: 'Timeline', icon: Clock },
-  '/alerts': { title: 'Alerts & Intel', icon: Bell },
-  '/documents': { title: 'Documents', icon: FileText },
-  '/data-sources': { title: 'Data Sources', icon: Server },
-  '/datasources': { title: 'Data Sources', icon: Server },
-  '/ai-assistant': { title: 'AI Assistant', icon: Bot },
-  '/evidence': { title: 'Evidence Ledger', icon: Shield },
-  '/audit': { title: 'Audit Logs', icon: BookOpen },
-  '/users': { title: 'User Management', icon: Sliders },
-  '/settings': { title: 'Settings', icon: Settings },
+const PAGE_TITLES: Record<string, string> = {
+  '/dashboard': 'Dashboard',
+  '/inspector': 'Inspector Home',
+  '/investigations': 'Investigations',
+  '/network': 'Network Graph',
+  '/database': 'Database Explorer',
+  '/entities': 'Entities',
+  '/timeline': 'Timeline',
+  '/alerts': 'Alerts & Intel',
+  '/documents': 'Documents',
+  '/data-sources': 'Data Sources',
+  '/datasources': 'Data Sources',
+  '/ai-assistant': 'AI Assistant',
+  '/evidence': 'Evidence Ledger',
+  '/audit': 'Audit Logs',
+  '/users': 'User Management',
+  '/settings': 'Settings',
 };
 
-function getPageInfo(pathname: string): { title: string; icon?: any } {
-  for (const [route, info] of Object.entries(PAGE_ROUTES)) {
+function getPageTitle(pathname: string): string {
+  for (const [route, title] of Object.entries(PAGE_TITLES)) {
     if (pathname === route || pathname.startsWith(route + '/')) {
-      return info;
+      return title;
     }
   }
 
   const firstPart = pathname.replace(/^\//, '').split('/')[0];
   if (firstPart) {
-    const formatted = firstPart
+    return firstPart
       .split('-')
       .map(w => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
-    return { title: formatted, icon: LayoutDashboard };
   }
 
-  return { title: 'Dashboard', icon: LayoutDashboard };
+  return 'Dashboard';
 }
 
 interface SearchResult {
@@ -54,17 +49,19 @@ interface SearchResult {
   number?: string;
   licensePlate?: string;
   accountNumber?: string;
+  firNumber?: string;
   nodeType: string;
   matchReason: string;
 }
 
-function getEntityLabel(e: AnyEntity): string {
-  if (e.nodeType === 'Person') return e.name;
-  if (e.nodeType === 'Phone') return e.number;
-  if (e.nodeType === 'Vehicle') return e.licensePlate;
-  if (e.nodeType === 'Organization') return e.name;
-  if (e.nodeType === 'Account') return e.accountNumber;
-  if (e.nodeType === 'Location') return e.name;
+function getEntityLabel(e: AnyEntity | SearchResult): string {
+  if (e.nodeType === 'Person') return e.name || e.id;
+  if (e.nodeType === 'Phone') return e.number || e.id;
+  if (e.nodeType === 'Vehicle') return e.licensePlate || e.id;
+  if (e.nodeType === 'Organization') return e.name || e.id;
+  if (e.nodeType === 'Account') return e.accountNumber || e.id;
+  if (e.nodeType === 'Location') return e.name || e.id;
+  if (e.nodeType === 'Case') return ('firNumber' in e && e.firNumber) || e.name || e.id;
   return (e as any).name || (e as any).number || (e as any).licensePlate || (e as any).accountNumber || e.id;
 }
 
@@ -193,6 +190,7 @@ function searchLocalEntities(q: string, filterTypes: string[] = [], flaggedOnly 
           number: 'number' in entity ? entity.number : undefined,
           licensePlate: 'licensePlate' in entity ? entity.licensePlate : undefined,
           accountNumber: 'accountNumber' in entity ? entity.accountNumber : undefined,
+          firNumber: 'firNumber' in entity ? entity.firNumber : undefined,
           nodeType: entity.nodeType,
           matchReason,
         },
@@ -209,7 +207,7 @@ export default function Topbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const pageInfo = getPageInfo(location.pathname);
+  const pageTitle = getPageTitle(location.pathname);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -699,21 +697,7 @@ export default function Topbar() {
           </span>
         </div>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, overflow: 'hidden', paddingLeft: 8 }}>
-          {pageInfo.icon && (
-            <div style={{
-              width: 26,
-              height: 26,
-              borderRadius: 6,
-              background: 'rgba(124, 58, 237, 0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <pageInfo.icon size={14} style={{ color: '#7c3aed' }} />
-            </div>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, overflow: 'hidden' }}>
           <span style={{
             fontSize: '0.85rem',
             fontWeight: 700,
@@ -724,7 +708,7 @@ export default function Topbar() {
             letterSpacing: '0.04em',
             textTransform: 'uppercase',
           }}>
-            {pageInfo.title}
+            {pageTitle}
           </span>
         </div>
       )}
@@ -748,8 +732,8 @@ export default function Topbar() {
               selectedTypes.length === 0
                 ? 'Search persons, phones, vehicles, cases...'
                 : selectedTypes.length === 1
-                ? `Search ${selectedTypes[0]}s...`
-                : `Search ${selectedTypes.join(', ')}...`
+                  ? `Search ${selectedTypes[0]}s...`
+                  : `Search ${selectedTypes.join(', ')}...`
             }
             value={query}
             onChange={e => handleSearch(e.target.value)}
