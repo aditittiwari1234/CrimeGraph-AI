@@ -475,7 +475,7 @@ export default function Topbar() {
           onClick={() => navigate('/alerts')}
           style={{ padding: '6px 8px', position: 'relative' }}
         >
-          <Bell size={16} />
+          <Bell size={17} />
           <span style={{
             position: 'absolute', top: 2, right: 2, width: 8, height: 8,
             background: 'var(--color-critical)', borderRadius: '50%', border: '2px solid white',
@@ -485,7 +485,7 @@ export default function Topbar() {
         <div style={{ width: 1, height: 24, background: 'var(--border-primary)' }} />
 
         <button className="btn btn-ghost btn-sm" onClick={logout} title="Logout">
-          <LogOut size={14} />
+          <LogOut size={17} />
         </button>
       </div>
     </header>

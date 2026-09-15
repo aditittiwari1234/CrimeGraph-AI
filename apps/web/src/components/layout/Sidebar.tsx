@@ -276,9 +276,9 @@ export default function Sidebar() {
     overflow: 'hidden',
     transition: 'opacity 150ms ease',
     padding: expanded ? '10px 10px 4px' : '0 10px',
-    fontSize: '0.62rem', fontWeight: 700,
+    fontSize: '0.67rem', fontWeight: 700,
     textTransform: 'uppercase', letterSpacing: '0.1em',
-    color: '#94a3b8',
+    color: '#8c95a1ff',
     whiteSpace: 'nowrap',
   };
 
