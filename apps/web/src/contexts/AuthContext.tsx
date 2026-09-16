@@ -10,6 +10,8 @@ export interface User {
   badgeNumber?: string;
   department?: string;
   photoUrl?: string; // base64 data URL or remote URL
+  isActive?: boolean;
+  lastLogin?: string | Date;
 }
 
 interface AuthContextType {
@@ -21,38 +23,35 @@ interface AuthContextType {
   updateProfile: (updates: Partial<Omit<User, 'id' | 'username'>>) => void;
   // Admin: managed user registry
   managedUsers: User[];
-  addManagedUser: (u: User) => void;
-  updateManagedUser: (id: string, updates: Partial<User>) => void;
-  deleteManagedUser: (id: string) => void;
+  addManagedUser: (u: User & { password?: string }) => Promise<User>;
+  updateManagedUser: (id: string, updates: Partial<User> & { password?: string }) => Promise<User>;
+  deleteManagedUser: (id: string) => Promise<void>;
+  refreshManagedUsers: () => Promise<void>;
 }
 
 // ── Demo users for offline / no-backend mode ──────────────────────────────────
 const INITIAL_DEMO_USERS: (User & { password: string })[] = [
   {
-    id: 'demo-1', username: 'admin', email: 'admin@ncrb.gov.in',
+    id: 'USR-001', username: 'admin', email: 'admin@crimegraph.ai',
     fullName: 'System Administrator', role: 'administrator',
-    badgeNumber: 'ADMIN-001', department: 'NCRB', password: 'Demo@1234',
+    badgeNumber: 'ADMIN-001', department: 'CrimeGraph AI Master Operations', password: 'Demo@1234',
   },
   {
-    id: 'demo-2', username: 'singh_si', email: 'singh@ncrb.gov.in',
-    fullName: 'Inspector A.K. Singh', role: 'senior_investigator',
-    badgeNumber: 'SI-2024-001', department: 'Cyber Crime Wing', password: 'Demo@1234',
+    id: 'USR-002', username: 'singh_si', email: 'inspector.singh@ncrb.gov.in',
+    fullName: 'Inspector Rajendra Singh', role: 'senior_investigator',
+    badgeNumber: 'SI-2024-042', department: 'NCRB — Women Safety & Special Crimes', password: 'Demo@1234',
   },
   {
-    id: 'demo-3', username: 'verma_inv', email: 'verma@ncrb.gov.in',
-    fullName: 'Sub-Inspector R. Verma', role: 'investigator',
-    badgeNumber: 'INV-2024-002', department: 'Financial Crimes', password: 'Demo@1234',
+    id: 'USR-003', username: 'verma_inv', email: 'investigator.verma@ncrb.gov.in',
+    fullName: 'Sub-Inspector Priya Verma', role: 'investigator',
+    badgeNumber: 'INV-2024-118', department: 'NCRB — Organised Crime Syndicate Unit', password: 'Demo@1234',
   },
   {
-    id: 'demo-4', username: 'analyst_gupta', email: 'gupta@ncrb.gov.in',
-    fullName: 'Analyst P. Gupta', role: 'analyst',
-    badgeNumber: 'AN-2024-003', department: 'Intelligence Analysis', password: 'Demo@1234',
+    id: 'USR-004', username: 'analyst_gupta', email: 'analyst.gupta@ncrb.gov.in',
+    fullName: 'Data Analyst Suresh Gupta', role: 'analyst',
+    badgeNumber: 'ANA-2024-023', department: 'NCRB — Cyber & Financial Intelligence Cell', password: 'Demo@1234',
   },
 ];
-
-const DEMO_USERS_MAP: Record<string, User & { password: string }> = Object.fromEntries(
-  INITIAL_DEMO_USERS.map(u => [u.username, u])
-);
 
 const STORAGE_KEY = 'cg_demo_user';
 const MANAGED_USERS_KEY = 'cg_managed_users';
@@ -76,6 +75,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(MANAGED_USERS_KEY, JSON.stringify(managedUsers));
   }, [managedUsers]);
 
+  // Hydrate profile photo into user object
+  const hydratePhoto = useCallback((u: User): User => {
+    try {
+      const photos = JSON.parse(localStorage.getItem(PROFILE_PHOTOS_KEY) || '{}');
+      if (photos[u.id]) return { ...u, photoUrl: photos[u.id] };
+    } catch { /* ignore */ }
+    return u;
+  }, []);
+
   const logout = useCallback(() => {
     const refreshToken = localStorage.getItem('refreshToken');
     if (refreshToken) {
@@ -87,36 +95,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  // Hydrate profile photo into user object
-  const hydratePhoto = (u: User): User => {
+  // Fetch users directly from PostgreSQL database
+  const refreshManagedUsers = useCallback(async () => {
     try {
-      const photos = JSON.parse(localStorage.getItem(PROFILE_PHOTOS_KEY) || '{}');
-      if (photos[u.id]) return { ...u, photoUrl: photos[u.id] };
-    } catch { /* ignore */ }
-    return u;
-  };
+      const res = await api.get('/api/auth/users');
+      if (res.data?.users && Array.isArray(res.data.users)) {
+        const hydratedList = res.data.users.map((u: any) => hydratePhoto(u));
+        setManagedUsers(hydratedList);
+      }
+    } catch {
+      // Keep cached users if backend is unreachable
+    }
+  }, [hydratePhoto]);
 
-  // Restore session on mount
+  // Restore session and sync users on mount
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
         setUser(hydratePhoto(JSON.parse(stored)));
-        setIsLoading(false);
-        return;
-      } catch { localStorage.removeItem(STORAGE_KEY); }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+      }
     }
 
     const token = localStorage.getItem('accessToken');
     if (token) {
       api.get('/api/auth/me')
-        .then(res => setUser(hydratePhoto(res.data)))
+        .then(res => {
+          if (res.data) setUser(hydratePhoto(res.data));
+        })
         .catch(() => logout())
         .finally(() => setIsLoading(false));
     } else {
       setIsLoading(false);
     }
-  }, [logout]);
+
+    refreshManagedUsers();
+  }, [hydratePhoto, logout, refreshManagedUsers]);
 
   const login = async (username: string, password: string) => {
     try {
@@ -124,28 +140,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { accessToken, refreshToken, user: userData } = res.data;
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
-      setUser(hydratePhoto(userData));
+      const hydrated = hydratePhoto(userData);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(hydrated));
+      setUser(hydrated);
+      refreshManagedUsers().catch(() => {});
       return;
     } catch (apiErr: any) {
-      // Check managed users + demo users
-      const managedStored = localStorage.getItem(MANAGED_USERS_KEY);
-      const managed: (User & { password?: string })[] = managedStored ? JSON.parse(managedStored) : [];
-      const managedUser = managed.find(u => u.username === username);
-
-      const demo = DEMO_USERS_MAP[username];
-      const validPasswords = demo
-        ? [demo.password, 'Admin@123', 'admin', 'password', '123456']
-        : ['Demo@1234', 'Admin@123', 'admin', 'password', '123456'];
-
-      const matchUser = managedUser || demo;
-      if (matchUser && validPasswords.includes(password)) {
-        const { password: _pw, ...safeUser } = matchUser as any;
-        const hydrated = hydratePhoto(safeUser);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(hydrated));
-        setUser(hydrated);
-        return;
-      }
-
       const msg = apiErr?.response?.data?.error || apiErr?.message || 'Login failed. Please check your credentials.';
       throw new Error(msg);
     }
@@ -175,11 +175,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const addManagedUser = useCallback((u: User) => {
-    setManagedUsers(prev => [...prev, u]);
-  }, []);
+  const addManagedUser = useCallback(async (newUser: User & { password?: string }) => {
+    try {
+      const res = await api.post('/api/auth/users', newUser);
+      const created = res.data?.user ? hydratePhoto(res.data.user) : newUser;
 
-  const updateManagedUser = useCallback((id: string, updates: Partial<User>) => {
+      // Save photo locally if provided
+      if (newUser.photoUrl && created.id) {
+        try {
+          const photos = JSON.parse(localStorage.getItem(PROFILE_PHOTOS_KEY) || '{}');
+          photos[created.id] = newUser.photoUrl;
+          localStorage.setItem(PROFILE_PHOTOS_KEY, JSON.stringify(photos));
+        } catch { /* ignore */ }
+      }
+
+      setManagedUsers(prev => {
+        const filtered = prev.filter(u => u.id !== created.id && u.username !== created.username);
+        return [...filtered, created];
+      });
+      return created;
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'Failed to add user to database';
+      throw new Error(msg);
+    }
+  }, [hydratePhoto]);
+
+  const updateManagedUser = useCallback(async (id: string, updates: Partial<User> & { password?: string }) => {
     if (updates.photoUrl !== undefined) {
       try {
         const photos = JSON.parse(localStorage.getItem(PROFILE_PHOTOS_KEY) || '{}');
@@ -187,19 +208,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(PROFILE_PHOTOS_KEY, JSON.stringify(photos));
       } catch { /* ignore */ }
     }
-    setManagedUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
-    setUser(prev => (prev && prev.id === id) ? { ...prev, ...updates } : prev);
-  }, []);
 
-  const deleteManagedUser = useCallback((id: string) => {
-    setManagedUsers(prev => prev.filter(u => u.id !== id));
+    try {
+      const res = await api.put(`/api/auth/users/${id}`, updates);
+      const updated = res.data?.user ? hydratePhoto(res.data.user) : { ...updates, id } as User;
+      setManagedUsers(prev => prev.map(u => u.id === id ? { ...u, ...updated } : u));
+      setUser(prev => (prev && prev.id === id) ? { ...prev, ...updated } : prev);
+      return updated;
+    } catch (err: any) {
+      // optimistic fallback
+      setManagedUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
+      setUser(prev => (prev && prev.id === id) ? { ...prev, ...updates } : prev);
+      const msg = err.response?.data?.error || err.message || 'Failed to update user in database';
+      throw new Error(msg);
+    }
+  }, [hydratePhoto]);
+
+  const deleteManagedUser = useCallback(async (id: string) => {
+    try {
+      await api.delete(`/api/auth/users/${id}`);
+      setManagedUsers(prev => prev.filter(u => u.id !== id));
+    } catch (err: any) {
+      setManagedUsers(prev => prev.filter(u => u.id !== id));
+      const msg = err.response?.data?.error || err.message || 'Failed to delete user from database';
+      throw new Error(msg);
+    }
   }, []);
 
   return (
     <AuthContext.Provider value={{
       user, isAuthenticated: !!user, isLoading,
       login, logout, updateProfile,
-      managedUsers, addManagedUser, updateManagedUser, deleteManagedUser,
+      managedUsers, addManagedUser, updateManagedUser, deleteManagedUser, refreshManagedUsers
     }}>
       {children}
     </AuthContext.Provider>
