@@ -98,6 +98,11 @@
   box-shadow: none !important;
 }
 
+/* Restore box-shadow specifically for the topbar profile avatar ring */
+.avatar-ring {
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.25) !important;
+}
+
 html {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
@@ -234,7 +239,6 @@ pre {
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border-primary);
-  border-radius: var(--radius-lg);
   padding: var(--spacing-lg);
   box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -568,40 +572,118 @@ pre {
 }
 
 /* ============================================
-   Tables
+   Tables — Neon DB exact style
    ============================================ */
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+}
+
+.data-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #ffffff;
 }
 
 .data-table th {
   padding: 10px 14px;
   text-align: left;
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  border-bottom: 2px solid var(--border-primary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: #0f172a;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
   white-space: nowrap;
-  background: var(--bg-elevated);
+  background: #ffffff;
+  user-select: none;
 }
 
-.data-table td {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border-secondary);
-  color: var(--text-secondary);
+.data-table th:last-child {
+  border-right: none;
+}
+
+/* Column name part — slightly bolder */
+.data-table th .col-name {
+  font-weight: 500;
+  color: #0f172a;
+}
+
+/* Type annotation part — muted */
+.data-table th .col-type {
+  font-weight: 400;
+  color: #94a3b8;
+  margin-left: 4px;
+}
+
+/* Sortable header */
+.data-table th.sortable {
+  cursor: pointer;
+}
+
+.data-table th.sortable:hover .col-name {
+  color: #2563eb;
+}
+
+/* Sort icon */
+.data-table th .sort-icon {
+  margin-left: 6px;
+  opacity: 0.35;
   vertical-align: middle;
 }
 
-.data-table tr:hover td {
-  background: var(--bg-elevated);
+.data-table th.sorted .sort-icon {
+  opacity: 1;
+  color: #2563eb;
+}
+
+/* Checkbox column */
+.data-table th.cb-col,
+.data-table td.cb-col {
+  width: 36px;
+  padding: 10px 4px 10px 14px;
+}
+
+.data-table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  color: #0f172a;
+  vertical-align: middle;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.data-table td:last-child {
+  border-right: none;
+}
+
+/* Muted/null cells */
+.data-table td .cell-null {
+  color: #cbd5e1;
+}
+
+.data-table tbody tr {
+  transition: background 0.08s;
+}
+
+.data-table tbody tr:hover td {
+  background: #f8fafc;
 }
 
 .data-table tr:last-child td {
   border-bottom: none;
+}
+
+/* Checkbox styling */
+.data-table input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #2563eb;
+  cursor: pointer;
 }
 
 /* ============================================
@@ -702,12 +784,12 @@ pre {
   z-index: 90;
   overflow: hidden;
   transition: width 220ms cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 220ms ease;
+    box-shadow 220ms ease;
 }
 
 .sidebar.expanded {
   width: var(--sidebar-width);
-  box-shadow: 4px 0 24px rgba(0,0,0,0.10);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.10);
 }
 
 .sidebar-logo {

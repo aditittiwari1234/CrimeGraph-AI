@@ -519,7 +519,7 @@ export default function Topbar() {
           title={`${user.fullName} · ${user.department ?? user.role}`}
         >
           {/* Avatar circle — shows photo if set, else initials */}
-          <div style={{
+          <div className="avatar-ring" style={{
             width: 35,
             height: 35,
             borderRadius: '50%',
@@ -532,7 +532,6 @@ export default function Topbar() {
             color: '#fff',
             flexShrink: 0,
             letterSpacing: '0.02em',
-            boxShadow: '0 0 0 2px rgba(124,58,237,0.25)',
             overflow: 'hidden',
           }}>
             {user.photoUrl

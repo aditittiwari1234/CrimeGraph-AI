@@ -169,13 +169,38 @@ export default function EntitiesPage() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Type</th>
-              <th>Name / Value</th>
-              <th>Details</th>
-              <th>Community</th>
-              <th>Risk</th>
-              <th>Status</th>
+              <th className="sortable">
+                <span className="col-name">id</span>
+                <span className="col-type">varchar(32)</span>
+                <span className="sort-icon">⇅</span>
+              </th>
+              <th className="sortable">
+                <span className="col-name">type</span>
+                <span className="col-type">varchar(20)</span>
+                <span className="sort-icon">⇅</span>
+              </th>
+              <th className="sortable">
+                <span className="col-name">name</span>
+                <span className="col-type">varchar(200)</span>
+                <span className="sort-icon">⇅</span>
+              </th>
+              <th>
+                <span className="col-name">details</span>
+                <span className="col-type">text</span>
+              </th>
+              <th>
+                <span className="col-name">community</span>
+                <span className="col-type">varchar(4)</span>
+              </th>
+              <th className="sortable">
+                <span className="col-name">risk_score</span>
+                <span className="col-type">numeric</span>
+                <span className="sort-icon">⇅</span>
+              </th>
+              <th>
+                <span className="col-name">status</span>
+                <span className="col-type">varchar(10)</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -190,66 +215,57 @@ export default function EntitiesPage() {
                   style={{ cursor: 'pointer' }}
                   onClick={() => navigate(`/entities/${e.nodeType}/${e.id}`)}
                 >
-                  <td>
-                    <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#2563eb', fontWeight: 600 }}>
+                  <td style={{ color: '#2563eb', maxWidth: 120 }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
                       {e.id}
                     </span>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div style={{ width: 22, height: 22, borderRadius: 5, background: `${cfg?.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Icon size={11} style={{ color: cfg?.color }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <div style={{ width: 18, height: 18, borderRadius: 4, background: `${cfg?.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Icon size={10} style={{ color: cfg?.color }} />
                       </div>
-                      <span style={{ fontSize: '0.78rem', color: '#475569' }}>{e.nodeType}</span>
+                      {e.nodeType}
                     </div>
                   </td>
-                  <td style={{ fontWeight: 600, color: '#0f172a', maxWidth: 180 }}>
-                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td style={{ maxWidth: 200 }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', fontWeight: 500 }}>
                       {getEntityLabel(e)}
-                    </div>
+                    </span>
                     {e.nodeType === 'Person' && (e as any).alias && (
-                      <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>alias: {(e as any).alias}</div>
+                      <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>alias: {(e as any).alias}</span>
                     )}
                   </td>
-                  <td style={{ maxWidth: 220 }}>
-                    <div style={{ fontSize: '0.78rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td style={{ maxWidth: 240, color: '#475569' }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
                       {getEntitySub(e)}
-                    </div>
+                    </span>
                   </td>
                   <td>
-                    {e.nodeType === 'Person' && (e as any).communityId ? (
-                      <span style={{
-                        padding: '2px 8px', borderRadius: 6,
-                        background: { C1: 'rgba(37,99,235,0.08)', C2: 'rgba(124,58,237,0.08)', C3: 'rgba(22,163,74,0.08)' }[(e as any).communityId] || '#f1f5f9',
-                        color: { C1: '#1d4ed8', C2: '#6d28d9', C3: '#15803d' }[(e as any).communityId] || '#475569',
-                        fontSize: '0.72rem', fontWeight: 600,
-                      }}>
-                        {(e as any).communityId}
-                      </span>
-                    ) : <span style={{ color: '#e2e8f0' }}>—</span>}
+                    {e.nodeType === 'Person' && (e as any).communityId
+                      ? <span style={{
+                          color: { C1: '#1d4ed8', C2: '#6d28d9', C3: '#15803d' }[(e as any).communityId as string] || '#475569',
+                        }}>{(e as any).communityId}</span>
+                      : <span className="cell-null">NULL</span>
+                    }
                   </td>
                   <td>
                     {risk > 0 ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 50, height: 4, background: '#e2e8f0', borderRadius: 2 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 52, height: 3, background: '#e2e8f0', borderRadius: 2, flexShrink: 0 }}>
                           <div style={{ width: `${risk * 100}%`, height: '100%', borderRadius: 2, background: risk > 0.7 ? '#dc2626' : risk > 0.5 ? '#ea580c' : '#ca8a04' }} />
                         </div>
-                        <span style={{ fontSize: '0.72rem', color: risk > 0.7 ? '#dc2626' : '#64748b', fontWeight: 600 }}>
-                          {Math.round(risk * 100)}%
+                        <span style={{ color: risk > 0.7 ? '#dc2626' : '#64748b' }}>
+                          {(risk).toFixed(2)}
                         </span>
                       </div>
-                    ) : <span style={{ color: '#e2e8f0', fontSize: '0.72rem' }}>N/A</span>}
+                    ) : <span className="cell-null">NULL</span>}
                   </td>
                   <td>
-                    {flagged ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#b91c1c', fontSize: '0.72rem', fontWeight: 600 }}>
-                        <AlertTriangle size={11} /> Flagged
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#15803d', fontSize: '0.72rem' }}>
-                        <CheckCircle size={11} /> Clear
-                      </div>
-                    )}
+                    {flagged
+                      ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#b91c1c' }}><AlertTriangle size={11} /> flagged</span>
+                      : <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#15803d' }}><CheckCircle size={11} /> clear</span>
+                    }
                   </td>
                 </tr>
               );
@@ -266,21 +282,34 @@ export default function EntitiesPage() {
       </div>
 
       {/* Pagination */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, fontSize: '0.8rem', color: '#94a3b8' }}>
-        <span>Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(1)}>«</button>
-          <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹</button>
-          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-            const pg = Math.max(1, Math.min(page - 2, totalPages - 4)) + i;
-            return (
-              <button key={pg} onClick={() => setPage(pg)} className={`btn btn-sm ${pg === page ? 'btn-primary' : 'btn-secondary'}`}>
-                {pg}
-              </button>
-            );
-          })}
-          <button className="btn btn-secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>›</button>
-          <button className="btn btn-secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage(totalPages)}>»</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+        <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+          {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} rows
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage(1)}
+            style={{ padding: '4px 8px', fontSize: '0.78rem', background: 'none', border: '1px solid #e2e8f0', borderRadius: 5, cursor: page <= 1 ? 'not-allowed' : 'pointer', color: page <= 1 ? '#cbd5e1' : '#475569' }}
+          >«</button>
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage(p => p - 1)}
+            style={{ padding: '4px 10px', fontSize: '0.78rem', background: 'none', border: '1px solid #e2e8f0', borderRadius: 5, cursor: page <= 1 ? 'not-allowed' : 'pointer', color: page <= 1 ? '#cbd5e1' : '#475569' }}
+          >Prev</button>
+          <span style={{ fontSize: '0.78rem', color: '#64748b', padding: '0 6px', fontFamily: 'var(--font-mono)' }}>
+            {page} / {totalPages}
+          </span>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => setPage(p => p + 1)}
+            style={{ padding: '4px 10px', fontSize: '0.78rem', background: 'none', border: '1px solid #e2e8f0', borderRadius: 5, cursor: page >= totalPages ? 'not-allowed' : 'pointer', color: page >= totalPages ? '#cbd5e1' : '#475569' }}
+          >Next</button>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => setPage(totalPages)}
+            style={{ padding: '4px 8px', fontSize: '0.78rem', background: 'none', border: '1px solid #e2e8f0', borderRadius: 5, cursor: page >= totalPages ? 'not-allowed' : 'pointer', color: page >= totalPages ? '#cbd5e1' : '#475569' }}
+          >»</button>
         </div>
       </div>
     </div>
