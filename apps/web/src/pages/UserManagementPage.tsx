@@ -573,6 +573,25 @@ export default function UserManagementPage() {
     };
   }, [paginated]);
 
+  // Enable mouse wheel horizontal scrolling when hovering on the horizontal scrollbar
+  useEffect(() => {
+    const el = bottomScrollRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        const delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+        el.scrollLeft += delta;
+      }
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, []);
+
   const stats = {
     total: managedUsers.length,
     admins: managedUsers.filter(u => u.role === 'administrator').length,
@@ -810,9 +829,9 @@ export default function UserManagementPage() {
         </div>
       </div>
 
-      {/* Full-width Data Table (edge-to-edge, zero left/right padding) */}
+      {/* Full-width Data Table (edge-to-edge, zero left/right padding, 10px bottom padding) */}
       <div className="card" style={{
-        padding: 0,
+        padding: '0 0 10px 0',
         overflow: 'hidden',
         borderTop: '1px solid #e2e8f0',
         borderBottom: '1px solid #e2e8f0',
@@ -821,6 +840,7 @@ export default function UserManagementPage() {
         borderRadius: 0,
         marginLeft: 'calc(-1 * var(--spacing-lg, 24px))',
         marginRight: 'calc(-1 * var(--spacing-lg, 24px))',
+        marginBottom: 'calc(-1 * var(--spacing-lg, 24px))',
         width: 'calc(100% + (2 * var(--spacing-lg, 24px)))',
       }}>
         <div
@@ -996,17 +1016,22 @@ export default function UserManagementPage() {
         </div>
       </div>
 
-      {/* Spacer so the fixed bottom horizontal scrollbar does not overlap the last row */}
-      <div style={{ height: 20 }} />
-
       {/* Fixed Horizontal Scrollbar — ALWAYS stuck at bottom of screen, mounted directly to body */}
       {createPortal(
-        <div className="fixed-table-bottom-dock">
+        <div
+          className="fixed-table-bottom-dock"
+          onWheel={(e) => {
+            if (e.deltaY !== 0 && bottomScrollRef.current) {
+              const delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+              bottomScrollRef.current.scrollLeft += delta;
+            }
+          }}
+        >
           <div
             ref={bottomScrollRef}
             onScroll={handleBottomScroll}
             className="fixed-horizontal-scrollbar"
-            title="Scroll horizontally across all columns"
+            title="Scroll horizontally across all columns (rotate mouse wheel to scroll)"
           >
             <div style={{ width: scrollWidth, height: 1 }} />
           </div>
