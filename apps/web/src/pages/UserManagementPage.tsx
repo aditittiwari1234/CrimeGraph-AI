@@ -49,6 +49,31 @@ const USER_COLUMNS = [
   { key: 'actions',      type: 'actions',       sortable: false },
 ];
 
+function formatHeader(key: string): string {
+  const overrides: Record<string, string> = {
+    id: 'ID',
+    user_id: 'User ID',
+    resource_id: 'Resource ID',
+    ip_address: 'IP Address',
+    nodeType: 'Node Type',
+    data_hash: 'Data Hash',
+    previous_hash: 'Previous Hash',
+    created_at: 'Created At',
+    updated_at: 'Updated At',
+    last_login: 'Last Login',
+    badge_number: 'Badge Number',
+    full_name: 'Full Name',
+    is_active: 'Status',
+    audit_logs: 'Audit Logs',
+  };
+  if (overrides[key]) return overrides[key];
+  return key
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 function initials(name: string) {
   return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
@@ -693,8 +718,7 @@ export default function UserManagementPage() {
                     onClick={col.sortable ? () => handleSort(col.key) : undefined}
                     style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
                   >
-                    <span className="col-name">{col.key}</span>
-                    <span className="col-type">{col.type}</span>
+                    <span className="col-name">{formatHeader(col.key)}</span>
                     {col.sortable && (
                       <span className="sort-icon">
                         {sortField === col.key ? (sortOrder === 'asc' ? '↑' : '↓') : '⇅'}

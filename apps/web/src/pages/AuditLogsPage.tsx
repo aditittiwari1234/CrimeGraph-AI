@@ -31,36 +31,63 @@ interface ColumnDef {
 }
 
 const AUDIT_COLUMNS: ColumnDef[] = [
-  { key: 'id',            type: 'uuid',        sortable: true },
-  { key: 'timestamp',     type: 'timestamptz', sortable: true },
-  { key: 'user_id',       type: 'varchar',     sortable: true },
-  { key: 'username',      type: 'varchar',     sortable: true },
-  { key: 'action',        type: 'varchar',     sortable: true },
-  { key: 'resource_type', type: 'varchar',     sortable: true },
-  { key: 'resource_id',   type: 'varchar',     sortable: true },
-  { key: 'description',   type: 'text',        sortable: true },
-  { key: 'result',        type: 'varchar',     sortable: true },
-  { key: 'ip_address',    type: 'varchar',     sortable: true },
-  { key: 'user_agent',    type: 'text',        sortable: false },
-  { key: 'metadata',      type: 'jsonb',       sortable: false },
-  { key: 'data_hash',     type: 'varchar',     sortable: false },
-  { key: 'previous_hash', type: 'varchar',     sortable: false },
+  { key: 'id', type: 'uuid', sortable: true },
+  { key: 'timestamp', type: 'timestamptz', sortable: true },
+  { key: 'user_id', type: 'varchar', sortable: true },
+  { key: 'username', type: 'varchar', sortable: true },
+  { key: 'action', type: 'varchar', sortable: true },
+  { key: 'resource_type', type: 'varchar', sortable: true },
+  { key: 'resource_id', type: 'varchar', sortable: true },
+  { key: 'description', type: 'text', sortable: true },
+  { key: 'result', type: 'varchar', sortable: true },
+  { key: 'ip_address', type: 'varchar', sortable: true },
+  { key: 'user_agent', type: 'text', sortable: false },
+  { key: 'metadata', type: 'jsonb', sortable: false },
+  { key: 'data_hash', type: 'varchar', sortable: false },
+  { key: 'previous_hash', type: 'varchar', sortable: false },
 ];
 
 const ACTION_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  LOGIN:           { bg: '#f0fdf4', text: '#16a34a', border: '#bbf7d0' },
-  LOGOUT:          { bg: '#f8fafc', text: '#64748b', border: '#e2e8f0' },
-  CREATE:          { bg: '#eff6ff', text: '#2563eb', border: '#bfdbfe' },
-  READ:            { bg: '#ecfeff', text: '#0891b2', border: '#a5f3fc' },
-  UPDATE:          { bg: '#fefce8', text: '#ca8a04', border: '#fef08a' },
-  DELETE:          { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
-  GRAPH_QUERY:     { bg: '#f5f3ff', text: '#7c3aed', border: '#ddd6fe' },
-  AI_QUERY:        { bg: '#fdf2f8', text: '#db2777', border: '#fbcfe8' },
-  SEARCH:          { bg: '#eef2ff', text: '#4f46e5', border: '#c7d2fe' },
-  SEED_EXECUTED:   { bg: '#fff7ed', text: '#ea580c', border: '#fed7aa' },
+  LOGIN: { bg: '#f0fdf4', text: '#16a34a', border: '#bbf7d0' },
+  LOGOUT: { bg: '#f8fafc', text: '#64748b', border: '#e2e8f0' },
+  CREATE: { bg: '#eff6ff', text: '#2563eb', border: '#bfdbfe' },
+  READ: { bg: '#ecfeff', text: '#0891b2', border: '#a5f3fc' },
+  UPDATE: { bg: '#fefce8', text: '#ca8a04', border: '#fef08a' },
+  DELETE: { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
+  GRAPH_QUERY: { bg: '#f5f3ff', text: '#7c3aed', border: '#ddd6fe' },
+  AI_QUERY: { bg: '#fdf2f8', text: '#db2777', border: '#fbcfe8' },
+  SEARCH: { bg: '#eef2ff', text: '#4f46e5', border: '#c7d2fe' },
+  SEED_EXECUTED: { bg: '#fff7ed', text: '#ea580c', border: '#fed7aa' },
   EVIDENCE_VERIFY: { bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' },
-  EXPORT:          { bg: '#f0fdfa', text: '#0d9488', border: '#99f6e4' },
+  EXPORT: { bg: '#f0fdfa', text: '#0d9488', border: '#99f6e4' },
 };
+
+function formatHeader(key: string): string {
+  const overrides: Record<string, string> = {
+    id: 'ID',
+    user_id: 'User ID',
+    resource_id: 'Resource ID',
+    ip_address: 'IP Address',
+    nodeType: 'Node Type',
+    data_hash: 'Data Hash',
+    previous_hash: 'Previous Hash',
+    created_at: 'Created At',
+    updated_at: 'Updated At',
+    last_login: 'Last Login',
+    badge_number: 'Badge Number',
+    full_name: 'Full Name',
+    is_active: 'Status',
+    audit_logs: 'Audit Logs',
+    resource_type: 'Resource Type',
+    user_agent: 'User Agent',
+  };
+  if (overrides[key]) return overrides[key];
+  return key
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
 
 function formatTimestamp(iso: string): string {
   if (!iso) return '—';
@@ -402,7 +429,7 @@ export default function AuditLogsPage() {
       </div>
 
       {/* Main Table Card with full horizontal and vertical grid lines */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+      <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
         <div style={{ overflowX: 'auto', maxHeight: 720 }}>
           <table className="data-table" style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1600 }}>
             <thead>
@@ -420,8 +447,7 @@ export default function AuditLogsPage() {
                       textAlign: 'left'
                     }}
                   >
-                    <span className="col-name">{col.key}</span>
-                    <span className="col-type">{col.type}</span>
+                    <span className="col-name">{formatHeader(col.key)}</span>
                     {col.sortable && (
                       <span className="sort-icon">
                         {sortField === col.key ? (sortOrder === 'asc' ? '↑' : '↓') : '⇅'}
@@ -766,7 +792,7 @@ export default function AuditLogsPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 18 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 3 }}>
-                    Timestamp (timestamptz)
+                    Timestamp
                   </label>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: '#0f172a' }}>
                     {formatTimestamp(activeLogModal.timestamp)} ({activeLogModal.timestamp})
@@ -824,7 +850,7 @@ export default function AuditLogsPage() {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 3 }}>
-                    IP Address (varchar)
+                    IP Address
                   </label>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: '#0f172a' }}>
                     {activeLogModal.ip_address || 'NULL'}
@@ -833,7 +859,7 @@ export default function AuditLogsPage() {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 3 }}>
-                    User Agent (text)
+                    User Agent
                   </label>
                   <div style={{ fontSize: '0.82rem', color: '#475569', wordBreak: 'break-all' }}>
                     {activeLogModal.user_agent || 'NULL'}
@@ -844,7 +870,7 @@ export default function AuditLogsPage() {
               {/* Description */}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 }}>
-                  Description (text)
+                  Description
                 </label>
                 <div style={{ padding: '10px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.82rem', color: '#0f172a' }}>
                   {activeLogModal.description || 'No description recorded.'}
@@ -855,7 +881,7 @@ export default function AuditLogsPage() {
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                   <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                    Metadata (jsonb)
+                    Metadata
                   </label>
                   <button
                     onClick={() => copyToClipboard(JSON.stringify(activeLogModal.metadata, null, 2), 'modal-meta')}
