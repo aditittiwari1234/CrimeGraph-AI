@@ -846,7 +846,7 @@ export default function DatabasePage() {
             ) : (
               /* DYNAMIC TABLE VIEW — Neon-style minimal */
               <div>
-                <div style={{ overflowX: 'auto', maxHeight: 680 }}>
+                <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', fontSize: '0.82rem', borderCollapse: 'collapse', textAlign: 'left', fontFamily: 'var(--font-sans)' }}>
                     <thead>
                       <tr style={{

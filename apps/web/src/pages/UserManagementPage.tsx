@@ -1,4 +1,5 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus, Pencil, Trash2, Camera, X, Save, Search, UserCheck, Users,
   Shield, ChevronDown, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle
@@ -454,6 +455,35 @@ export default function UserManagementPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
 
+  // Horizontal scroll sync refs & logic for always-visible bottom scrollbar
+  const tableRef = useRef<HTMLDivElement>(null);
+  const bottomScrollRef = useRef<HTMLDivElement>(null);
+  const [scrollWidth, setScrollWidth] = useState(2000);
+  const isSyncingBottom = useRef(false);
+  const isSyncingTable = useRef(false);
+
+  const handleTableScroll = () => {
+    if (isSyncingBottom.current) {
+      isSyncingBottom.current = false;
+      return;
+    }
+    if (bottomScrollRef.current && tableRef.current) {
+      isSyncingTable.current = true;
+      bottomScrollRef.current.scrollLeft = tableRef.current.scrollLeft;
+    }
+  };
+
+  const handleBottomScroll = () => {
+    if (isSyncingTable.current) {
+      isSyncingTable.current = false;
+      return;
+    }
+    if (tableRef.current && bottomScrollRef.current) {
+      isSyncingBottom.current = true;
+      tableRef.current.scrollLeft = bottomScrollRef.current.scrollLeft;
+    }
+  };
+
   // Admin guard
   if (currentUser?.role !== 'administrator') {
     return (
@@ -525,6 +555,23 @@ export default function UserManagementPage() {
 
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+
+  // Measure and sync table scrollWidth for the sticky horizontal scrollbar
+  useEffect(() => {
+    const updateWidth = () => {
+      if (tableRef.current) {
+        setScrollWidth(tableRef.current.scrollWidth);
+      }
+    };
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    const observer = new ResizeObserver(updateWidth);
+    if (tableRef.current) observer.observe(tableRef.current);
+    return () => {
+      window.removeEventListener('resize', updateWidth);
+      observer.disconnect();
+    };
+  }, [paginated]);
 
   const stats = {
     total: managedUsers.length,
@@ -663,9 +710,9 @@ export default function UserManagementPage() {
         ))}
       </div>
 
-      {/* Filter and search bar */}
+      {/* Filter, search bar and pagination above the table */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="search-input-wrapper" style={{ flex: 1, minWidth: 280 }}>
+        <div className="search-input-wrapper" style={{ flex: 1, minWidth: 260 }}>
           <Search size={15} className="search-icon" />
           <input
             className="form-input"
@@ -700,14 +747,87 @@ export default function UserManagementPage() {
           </button>
         )}
 
-        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-          {filtered.length} {filtered.length === 1 ? 'user' : 'users'}
-        </span>
+        {/* Row count & Next/Prev pagination buttons above table */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'var(--font-mono)' }}>
+            {filtered.length > 0 ? ((page - 1) * PAGE_SIZE) + 1 : 0}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} rows
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage(1)}
+              style={{
+                padding: '4px 8px', fontSize: '0.78rem', background: '#ffffff',
+                border: '1px solid #cbd5e1', borderRadius: 5,
+                cursor: page <= 1 ? 'not-allowed' : 'pointer',
+                color: page <= 1 ? '#cbd5e1' : '#334155', fontWeight: 600
+              }}
+              title="First Page"
+            >
+              «
+            </button>
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage(p => p - 1)}
+              style={{
+                padding: '4px 10px', fontSize: '0.78rem', background: '#ffffff',
+                border: '1px solid #cbd5e1', borderRadius: 5,
+                cursor: page <= 1 ? 'not-allowed' : 'pointer',
+                color: page <= 1 ? '#cbd5e1' : '#334155', fontWeight: 600
+              }}
+            >
+              Prev
+            </button>
+            <span style={{ fontSize: '0.78rem', color: '#334155', padding: '0 6px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+              {page} / {totalPages}
+            </span>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage(p => p + 1)}
+              style={{
+                padding: '4px 10px', fontSize: '0.78rem', background: '#ffffff',
+                border: '1px solid #cbd5e1', borderRadius: 5,
+                cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+                color: page >= totalPages ? '#cbd5e1' : '#334155', fontWeight: 600
+              }}
+            >
+              Next
+            </button>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage(totalPages)}
+              style={{
+                padding: '4px 8px', fontSize: '0.78rem', background: '#ffffff',
+                border: '1px solid #cbd5e1', borderRadius: 5,
+                cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+                color: page >= totalPages ? '#cbd5e1' : '#334155', fontWeight: 600
+              }}
+              title="Last Page"
+            >
+              »
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Data Table — exact Entities style with horizontal and vertical grid lines */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-        <div style={{ overflowX: 'auto', maxHeight: 650 }}>
+      {/* Full-width Data Table (edge-to-edge, zero left/right padding) */}
+      <div className="card" style={{
+        padding: 0,
+        overflow: 'hidden',
+        borderTop: '1px solid #e2e8f0',
+        borderBottom: '1px solid #e2e8f0',
+        borderLeft: 'none',
+        borderRight: 'none',
+        borderRadius: 0,
+        marginLeft: 'calc(-1 * var(--spacing-lg, 24px))',
+        marginRight: 'calc(-1 * var(--spacing-lg, 24px))',
+        width: 'calc(100% + (2 * var(--spacing-lg, 24px)))',
+      }}>
+        <div
+          ref={tableRef}
+          onScroll={handleTableScroll}
+          className="hide-table-native-scrollbar"
+        >
           <table className="data-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
               <tr>
@@ -876,65 +996,23 @@ export default function UserManagementPage() {
         </div>
       </div>
 
-      {/* Pagination Footer */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-        <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-          {filtered.length > 0 ? ((page - 1) * PAGE_SIZE) + 1 : 0}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} rows
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage(1)}
-            style={{
-              padding: '4px 8px', fontSize: '0.78rem', background: 'none',
-              border: '1px solid #e2e8f0', borderRadius: 5,
-              cursor: page <= 1 ? 'not-allowed' : 'pointer',
-              color: page <= 1 ? '#cbd5e1' : '#475569'
-            }}
+      {/* Spacer so the fixed bottom horizontal scrollbar does not overlap the last row */}
+      <div style={{ height: 20 }} />
+
+      {/* Fixed Horizontal Scrollbar — ALWAYS stuck at bottom of screen, mounted directly to body */}
+      {createPortal(
+        <div className="fixed-table-bottom-dock">
+          <div
+            ref={bottomScrollRef}
+            onScroll={handleBottomScroll}
+            className="fixed-horizontal-scrollbar"
+            title="Scroll horizontally across all columns"
           >
-            «
-          </button>
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage(p => p - 1)}
-            style={{
-              padding: '4px 10px', fontSize: '0.78rem', background: 'none',
-              border: '1px solid #e2e8f0', borderRadius: 5,
-              cursor: page <= 1 ? 'not-allowed' : 'pointer',
-              color: page <= 1 ? '#cbd5e1' : '#475569'
-            }}
-          >
-            Prev
-          </button>
-          <span style={{ fontSize: '0.78rem', color: '#64748b', padding: '0 6px', fontFamily: 'var(--font-mono)' }}>
-            {page} / {totalPages}
-          </span>
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage(p => p + 1)}
-            style={{
-              padding: '4px 10px', fontSize: '0.78rem', background: 'none',
-              border: '1px solid #e2e8f0', borderRadius: 5,
-              cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-              color: page >= totalPages ? '#cbd5e1' : '#475569'
-            }}
-          >
-            Next
-          </button>
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage(totalPages)}
-            style={{
-              padding: '4px 8px', fontSize: '0.78rem', background: 'none',
-              border: '1px solid #e2e8f0', borderRadius: 5,
-              cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-              color: page >= totalPages ? '#cbd5e1' : '#475569'
-            }}
-          >
-            »
-          </button>
-        </div>
-      </div>
+            <div style={{ width: scrollWidth, height: 1 }} />
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Add modal */}
       {showModal && (

@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, RefreshCw, ShieldCheck, Copy, Check, Eye, X,
@@ -166,6 +167,29 @@ export default function AuditLogsPage() {
     return Array.from(set).sort();
   }, [logs]);
 
+  // Unique users for the filter dropdown
+  const uniqueUsers = useMemo(() => {
+    const map = new Map<string, string>();
+    logs.forEach(l => {
+      if (l.username) {
+        map.set(l.username, l.full_name || l.username);
+      }
+    });
+    return Array.from(map.entries())
+      .map(([username, fullName]) => ({ username, fullName }))
+      .sort((a, b) => a.username.localeCompare(b.username));
+  }, [logs]);
+
+  const handleUserFilterChange = (val: string) => {
+    setUserFilter(val);
+    if (val) {
+      searchParams.set('user', val);
+    } else {
+      searchParams.delete('user');
+    }
+    setSearchParams(searchParams);
+  };
+
   // Sorting handler
   const handleSort = (key: string) => {
     if (sortField === key) {
@@ -248,6 +272,52 @@ export default function AuditLogsPage() {
 
   const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(sorted.length / pageSize));
 
+  // Horizontal scroll sync refs & logic for always-visible bottom scrollbar
+  const tableRef = useRef<HTMLDivElement>(null);
+  const bottomScrollRef = useRef<HTMLDivElement>(null);
+  const [scrollWidth, setScrollWidth] = useState(2000);
+  const isSyncingBottom = useRef(false);
+  const isSyncingTable = useRef(false);
+
+  const handleTableScroll = () => {
+    if (isSyncingBottom.current) {
+      isSyncingBottom.current = false;
+      return;
+    }
+    if (bottomScrollRef.current && tableRef.current) {
+      isSyncingTable.current = true;
+      bottomScrollRef.current.scrollLeft = tableRef.current.scrollLeft;
+    }
+  };
+
+  const handleBottomScroll = () => {
+    if (isSyncingTable.current) {
+      isSyncingTable.current = false;
+      return;
+    }
+    if (tableRef.current && bottomScrollRef.current) {
+      isSyncingBottom.current = true;
+      tableRef.current.scrollLeft = bottomScrollRef.current.scrollLeft;
+    }
+  };
+
+  // Measure and sync table scrollWidth for the sticky horizontal scrollbar
+  useEffect(() => {
+    const updateWidth = () => {
+      if (tableRef.current) {
+        setScrollWidth(tableRef.current.scrollWidth);
+      }
+    };
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    const observer = new ResizeObserver(updateWidth);
+    if (tableRef.current) observer.observe(tableRef.current);
+    return () => {
+      window.removeEventListener('resize', updateWidth);
+      observer.disconnect();
+    };
+  }, [paginated]);
+
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
@@ -321,11 +391,7 @@ export default function AuditLogsPage() {
           <User size={13} />
           <span>Filtered by officer: <strong>@{userFilter}</strong></span>
           <button
-            onClick={() => {
-              setUserFilter('');
-              searchParams.delete('user');
-              setSearchParams(searchParams);
-            }}
+            onClick={() => handleUserFilterChange('')}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1d4ed8', padding: 0, display: 'flex', alignItems: 'center' }}
             title="Clear officer filter"
           >
@@ -336,7 +402,7 @@ export default function AuditLogsPage() {
 
       {/* Filters Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260, maxWidth: 650 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260, maxWidth: 780 }}>
           {/* Search Box */}
           <div className="search-input-wrapper" style={{ flex: 1 }}>
             <Search size={14} className="search-icon" />
@@ -348,6 +414,24 @@ export default function AuditLogsPage() {
               onChange={e => setSearch(e.target.value)}
             />
           </div>
+
+          {/* User / Officer Filter */}
+          <select
+            value={userFilter}
+            onChange={e => handleUserFilterChange(e.target.value)}
+            style={{
+              height: 34, padding: '0 10px', fontSize: '0.8rem',
+              background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6,
+              color: '#334155', cursor: 'pointer', outline: 'none'
+            }}
+          >
+            <option value="">All Officers ({uniqueUsers.length})</option>
+            {uniqueUsers.map(u => (
+              <option key={u.username} value={u.username}>
+                @{u.username}{u.fullName && u.fullName !== u.username ? ` (${u.fullName})` : ''}
+              </option>
+            ))}
+          </select>
 
           {/* Action Filter */}
           <select
@@ -386,9 +470,7 @@ export default function AuditLogsPage() {
                 setSearch('');
                 setActionFilter('');
                 setResultFilter('');
-                setUserFilter('');
-                searchParams.delete('user');
-                setSearchParams(searchParams);
+                handleUserFilterChange('');
               }}
               style={{
                 height: 34, padding: '0 10px', fontSize: '0.78rem',
@@ -401,18 +483,20 @@ export default function AuditLogsPage() {
           )}
         </div>
 
-        {/* Row Counts & Page Size */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.8rem', color: '#64748b' }}>
+        {/* Row Counts, Page Size & Pagination Controls above table */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14, fontSize: '0.8rem', color: '#64748b', flexWrap: 'wrap' }}>
           <span>
-            Showing <strong>{filtered.length}</strong> {filtered.length === 1 ? 'row' : 'rows'}
-            {filtered.length !== logs.length && ` (filtered from ${logs.length})`}
+            {filtered.length > 0
+              ? `${pageSize === -1 ? 1 : ((page - 1) * pageSize) + 1}–${pageSize === -1 ? filtered.length : Math.min(page * pageSize, filtered.length)} of ${filtered.length} rows`
+              : '0 rows'}
+            {filtered.length !== logs.length && ` (from ${logs.length})`}
           </span>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Per page:</span>
             <select
               value={pageSize}
-              onChange={e => setPageSize(Number(e.target.value))}
+              onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
               style={{
                 height: 28, padding: '0 6px', fontSize: '0.75rem',
                 background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 5,
@@ -425,12 +509,55 @@ export default function AuditLogsPage() {
               <option value={-1}>All ({logs.length})</option>
             </select>
           </div>
+
+          {pageSize !== -1 && totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
+                title="Previous Page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+
+              <span style={{ fontSize: '0.78rem', color: '#334155', padding: '0 4px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                {page} / {totalPages}
+              </span>
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
+                title="Next Page"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Main Table Card with full horizontal and vertical grid lines */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-        <div style={{ overflowX: 'auto', maxHeight: 720 }}>
+      {/* Full-width Main Table Card (edge-to-edge, zero left/right padding) */}
+      <div className="card" style={{
+        padding: 0,
+        overflow: 'hidden',
+        borderTop: '1px solid #e2e8f0',
+        borderBottom: '1px solid #e2e8f0',
+        borderLeft: 'none',
+        borderRight: 'none',
+        borderRadius: 0,
+        marginLeft: 'calc(-1 * var(--spacing-lg, 24px))',
+        marginRight: 'calc(-1 * var(--spacing-lg, 24px))',
+        width: 'calc(100% + (2 * var(--spacing-lg, 24px)))',
+      }}>
+        <div
+          ref={tableRef}
+          onScroll={handleTableScroll}
+          className="hide-table-native-scrollbar"
+        >
           <table className="data-table" style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1600 }}>
             <thead>
               <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 2 }}>
@@ -514,9 +641,7 @@ export default function AuditLogsPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setUserFilter(log.username);
-                            searchParams.set('user', log.username);
-                            setSearchParams(searchParams);
+                            handleUserFilterChange(log.username);
                           }}
                           style={{
                             background: 'none', border: 'none', padding: 0,
@@ -694,60 +819,23 @@ export default function AuditLogsPage() {
         </div>
       </div>
 
-      {/* Pagination Footer */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, flexWrap: 'wrap', gap: 10 }}>
-        <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-          {filtered.length > 0
-            ? `${pageSize === -1 ? 1 : ((page - 1) * pageSize) + 1}–${pageSize === -1 ? filtered.length : Math.min(page * pageSize, filtered.length)} of ${filtered.length} rows`
-            : '0 rows'}
-        </span>
+      {/* Spacer so the fixed bottom horizontal scrollbar does not overlap the last row */}
+      <div style={{ height: 20 }} />
 
-        {pageSize !== -1 && totalPages > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button
-              className="btn btn-secondary btn-sm"
-              disabled={page <= 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
-            >
-              <ChevronLeft size={14} />
-            </button>
-
-            {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
-              let pNum: number;
-              if (totalPages <= 7) {
-                pNum = i + 1;
-              } else if (page <= 4) {
-                pNum = i + 1;
-              } else if (page >= totalPages - 3) {
-                pNum = totalPages - 6 + i;
-              } else {
-                pNum = page - 3 + i;
-              }
-
-              return (
-                <button
-                  key={pNum}
-                  onClick={() => setPage(pNum)}
-                  className={`btn btn-sm ${page === pNum ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ minWidth: 32, padding: '4px 8px' }}
-                >
-                  {pNum}
-                </button>
-              );
-            })}
-
-            <button
-              className="btn btn-secondary btn-sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
-            >
-              <ChevronRight size={14} />
-            </button>
+      {/* Fixed Horizontal Scrollbar — ALWAYS stuck at bottom of screen, mounted directly to body */}
+      {createPortal(
+        <div className="fixed-table-bottom-dock">
+          <div
+            ref={bottomScrollRef}
+            onScroll={handleBottomScroll}
+            className="fixed-horizontal-scrollbar"
+            title="Scroll horizontally across all columns"
+          >
+            <div style={{ width: scrollWidth, height: 1 }} />
           </div>
-        )}
-      </div>
+        </div>,
+        document.body
+      )}
 
       {/* Detailed Inspection Modal */}
       {activeLogModal && (
