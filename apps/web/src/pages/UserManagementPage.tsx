@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import {
   Plus, Pencil, Trash2, Camera, X, Save, Search, UserCheck, Users,
-  Shield, ChevronDown, CheckCircle2, RefreshCw, Key, Eye, EyeOff, AlertCircle
+  Shield, ChevronDown, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle
 } from 'lucide-react';
 import { useAuth, type User } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -33,8 +33,35 @@ const DEPARTMENTS = [
   'Crime Branch CID'
 ];
 
+const USER_COLUMNS = [
+  { key: 'id',           type: 'varchar(64)',   sortable: true },
+  { key: 'username',     type: 'varchar(100)',  sortable: true },
+  { key: 'full_name',    type: 'varchar(255)',  sortable: true },
+  { key: 'role',         type: 'varchar(50)',   sortable: true },
+  { key: 'department',   type: 'varchar(255)',  sortable: true },
+  { key: 'badge_number', type: 'varchar(50)',   sortable: true },
+  { key: 'email',        type: 'varchar(255)',  sortable: true },
+  { key: 'is_active',    type: 'boolean',       sortable: true },
+  { key: 'last_login',   type: 'timestamptz',   sortable: true },
+  { key: 'created_at',   type: 'timestamptz',   sortable: true },
+  { key: 'updated_at',   type: 'timestamptz',   sortable: true },
+  { key: 'audit_logs',   type: 'int',           sortable: true },
+  { key: 'actions',      type: 'actions',       sortable: false },
+];
+
 function initials(name: string) {
   return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+}
+
+function formatTimestamp(val: any): string {
+  if (!val) return 'NULL';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return String(val);
+    return d.toISOString().replace('T', ' ').slice(0, 19);
+  } catch {
+    return String(val);
+  }
 }
 
 interface UserFormState {
@@ -53,14 +80,14 @@ const emptyForm = (): UserFormState => ({
   role: 'investigator', department: '', badgeNumber: '', password: '',
 });
 
-function Avatar({ user, size = 40 }: { user: Partial<User>; size?: number }) {
+function Avatar({ user, size = 32 }: { user: Partial<User>; size?: number }) {
   const rc = ROLE_COLORS[user.role ?? ''] ?? { bg: 'rgba(100,100,100,0.2)', text: '#64748b' };
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
       background: user.photoUrl ? 'transparent' : `linear-gradient(135deg, ${rc.text}cc, ${rc.text}66)`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: size * 0.32, fontWeight: 700, color: '#fff',
+      fontSize: size * 0.35, fontWeight: 700, color: '#fff',
       border: `2px solid ${rc.text}40`,
     }}>
       {user.photoUrl
@@ -383,6 +410,8 @@ function UserFormModal({ initial, onSave, onClose }: UserFormModalProps) {
   );
 }
 
+const PAGE_SIZE = 15;
+
 export default function UserManagementPage() {
   const { user: currentUser, managedUsers, addManagedUser, updateManagedUser, deleteManagedUser, refreshManagedUsers } = useAuth();
   const navigate = useNavigate();
@@ -394,6 +423,11 @@ export default function UserManagementPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Table Sorting and Pagination (Entities-style)
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [page, setPage] = useState(1);
 
   // Admin guard
   if (currentUser?.role !== 'administrator') {
@@ -417,16 +451,55 @@ export default function UserManagementPage() {
     setTimeout(() => setSyncNotice(''), 4000);
   };
 
-  const filtered = managedUsers.filter(u => {
-    const q = search.toLowerCase();
-    const matchSearch = !q ||
-      u.fullName.toLowerCase().includes(q) ||
-      u.username.toLowerCase().includes(q) ||
-      (u.department ?? '').toLowerCase().includes(q) ||
-      (u.email ?? '').toLowerCase().includes(q);
-    const matchRole = !roleFilter || u.role === roleFilter;
-    return matchSearch && matchRole;
-  });
+  const handleSort = (key: string) => {
+    if (sortField === key) {
+      setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(key);
+      setSortOrder('asc');
+    }
+    setPage(1);
+  };
+
+  const filtered = useMemo(() => {
+    let result = managedUsers.filter(u => {
+      const q = search.toLowerCase();
+      const matchSearch = !q ||
+        u.fullName.toLowerCase().includes(q) ||
+        u.username.toLowerCase().includes(q) ||
+        (u.department ?? '').toLowerCase().includes(q) ||
+        (u.email ?? '').toLowerCase().includes(q) ||
+        u.id.toLowerCase().includes(q);
+      const matchRole = !roleFilter || u.role === roleFilter;
+      return matchSearch && matchRole;
+    });
+
+    if (sortField) {
+      result = [...result].sort((a, b) => {
+        let va = (a as any)[sortField];
+        let vb = (b as any)[sortField];
+        if (sortField === 'full_name') { va = a.fullName; vb = b.fullName; }
+        if (sortField === 'badge_number') { va = a.badgeNumber; vb = b.badgeNumber; }
+        if (sortField === 'is_active') { va = a.isActive !== false; vb = b.isActive !== false; }
+        if (sortField === 'last_login') { va = a.lastLogin; vb = b.lastLogin; }
+        if (sortField === 'created_at') { va = (a as any).createdAt; vb = (b as any).createdAt; }
+        if (sortField === 'updated_at') { va = (a as any).updatedAt; vb = (b as any).updatedAt; }
+        if (sortField === 'audit_logs') { va = a.auditLogsCount ?? 0; vb = b.auditLogsCount ?? 0; }
+
+        if (va === vb) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        const cmp = typeof va === 'number' && typeof vb === 'number'
+          ? va - vb
+          : String(va).localeCompare(String(vb));
+        return sortOrder === 'asc' ? cmp : -cmp;
+      });
+    }
+    return result;
+  }, [managedUsers, search, roleFilter, sortField, sortOrder]);
+
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
   const stats = {
     total: managedUsers.length,
@@ -481,12 +554,12 @@ export default function UserManagementPage() {
   };
 
   return (
-    <div style={{ padding: 28, maxWidth: 1100, margin: '0 auto' }}>
+    <div className="fade-in">
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: 0, letterSpacing: '-0.02em' }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
               User Management
             </h1>
             <span style={{
@@ -505,8 +578,8 @@ export default function UserManagementPage() {
               PostgreSQL Connected · {managedUsers.length} Users
             </span>
           </div>
-          <p style={{ margin: '4px 0 0', fontSize: '0.83rem', color: 'var(--text-muted, #64748b)' }}>
-            Create and manage system personnel accounts stored directly in the database
+          <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#64748b' }}>
+            System personnel accounts stored in PostgreSQL database with role governance
           </p>
         </div>
 
@@ -514,28 +587,20 @@ export default function UserManagementPage() {
           <button
             onClick={handleRefresh}
             disabled={isRefreshing}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '9px 14px', borderRadius: 9, fontSize: '0.83rem', fontWeight: 600,
-              background: '#ffffff', color: '#475569', border: '1px solid #cbd5e1', cursor: 'pointer',
-            }}
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             title="Refresh list from database"
           >
             <RefreshCw size={13} className={isRefreshing ? 'spin' : ''} />
-            <span>Sync</span>
+            <span>Sync Database</span>
           </button>
 
           <button
             onClick={() => setShowModal(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '9px 18px', borderRadius: 9, fontSize: '0.85rem', fontWeight: 700,
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-              color: '#fff', border: 'none', cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(37,99,235,0.25)',
-            }}
+            className="btn btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <Plus size={16} />
+            <Plus size={15} />
             Add User
           </button>
         </div>
@@ -546,7 +611,7 @@ export default function UserManagementPage() {
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '10px 16px', borderRadius: 8,
           background: '#eff6ff', border: '1px solid #bfdbfe',
-          color: '#1d4ed8', fontSize: '0.85rem', fontWeight: 500, marginBottom: 20
+          color: '#1d4ed8', fontSize: '0.85rem', fontWeight: 500, marginBottom: 18
         }}>
           <CheckCircle2 size={16} />
           <span>{syncNotice}</span>
@@ -554,52 +619,48 @@ export default function UserManagementPage() {
       )}
 
       {/* Stats cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 24 }}>
+      <div className="grid-4" style={{ marginBottom: 20, gridTemplateColumns: 'repeat(4, 1fr)' }}>
         {[
           { label: 'Database Users', value: stats.total, icon: Users, color: '#2563eb' },
           { label: 'Administrators', value: stats.admins, icon: Shield, color: '#dc2626' },
           { label: 'Investigators', value: stats.investigators, icon: UserCheck, color: '#7c3aed' },
           { label: 'Analysts', value: stats.analysts, icon: Users, color: '#059669' },
         ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} style={{
-            padding: '16px 18px', borderRadius: 12,
-            background: 'var(--bg-card, #ffffff)', border: '1px solid var(--border-primary, #e2e8f0)',
-            display: 'flex', alignItems: 'center', gap: 14,
-          }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Icon size={18} style={{ color }} />
+          <div key={label} className="stat-card" style={{ borderTop: `3px solid ${color}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 7, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon size={14} style={{ color }} />
+              </div>
+              <span className="stat-label">{label}</span>
             </div>
-            <div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', lineHeight: 1 }}>{value}</div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted, #64748b)', marginTop: 2 }}>{label}</div>
-            </div>
+            <div className="stat-value" style={{ fontSize: '1.6rem', color }}>{value}</div>
           </div>
         ))}
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-          <Search size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted, #64748b)' }} />
+      {/* Filter and search bar */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="search-input-wrapper" style={{ flex: 1, minWidth: 280 }}>
+          <Search size={15} className="search-icon" />
           <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            className="form-input"
             placeholder="Search users by name, username, email, department…"
-            style={{
-              width: '100%', boxSizing: 'border-box', padding: '9px 10px 9px 32px',
-              background: '#ffffff', border: '1px solid #cbd5e1',
-              borderRadius: 8, color: '#0f172a', fontSize: '0.85rem', outline: 'none',
-            }}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
           />
         </div>
+
         <div style={{ position: 'relative' }}>
           <select
+            className="form-select"
             value={roleFilter}
-            onChange={e => setRoleFilter(e.target.value)}
+            onChange={e => { setRoleFilter(e.target.value); setPage(1); }}
             style={{
-              padding: '9px 32px 9px 12px', appearance: 'none',
-              background: '#ffffff', border: '1px solid #cbd5e1',
-              borderRadius: 8, color: '#0f172a', fontSize: '0.83rem', outline: 'none', cursor: 'pointer',
+              padding: '8px 32px 8px 12px',
+              fontSize: '0.82rem',
+              height: 38,
+              borderRadius: 8,
+              border: '1px solid #cbd5e1'
             }}
           >
             <option value="">All Roles</option>
@@ -607,98 +668,248 @@ export default function UserManagementPage() {
           </select>
           <ChevronDown size={13} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
         </div>
+
+        {roleFilter && (
+          <button className="btn btn-secondary btn-sm" onClick={() => setRoleFilter('')}>
+            Clear Role ✕
+          </button>
+        )}
+
+        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+          {filtered.length} {filtered.length === 1 ? 'user' : 'users'}
+        </span>
       </div>
 
-      {/* Users table */}
-      <div style={{ background: 'var(--bg-card, #ffffff)', border: '1px solid var(--border-primary, #e2e8f0)', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{
-          display: 'grid', gridTemplateColumns: '2.5fr 1.5fr 1.5fr 1fr auto',
-          padding: '12px 20px', borderBottom: '1px solid #e2e8f0',
-          fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b',
-          background: '#f8fafc'
-        }}>
-          <span>User / DB Credentials</span>
-          <span>Role</span>
-          <span>Department</span>
-          <span>Badge</span>
-          <span>Actions</span>
-        </div>
-
-        {filtered.length === 0 ? (
-          <div style={{ padding: '48px 24px', textAlign: 'center', color: '#64748b', fontSize: '0.875rem' }}>
-            No users found in database.
-          </div>
-        ) : (
-          filtered.map((u, idx) => {
-            const rc = ROLE_COLORS[u.role] ?? { bg: 'rgba(100,100,100,0.1)', text: '#64748b' };
-            return (
-              <div
-                key={u.id}
-                style={{
-                  display: 'grid', gridTemplateColumns: '2.5fr 1.5fr 1.5fr 1fr auto',
-                  padding: '14px 20px', alignItems: 'center',
-                  borderBottom: idx < filtered.length - 1 ? '1px solid #e2e8f0' : 'none',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                {/* User info */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <Avatar user={u} size={38} />
-                  <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>
-                      {u.fullName}
-                      {u.id === currentUser?.id && (
-                        <span style={{ marginLeft: 6, fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: '#eff6ff', color: '#2563eb', verticalAlign: 'middle' }}>
-                          You
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 1 }}>
-                      @{u.username} · {u.email}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Role badge */}
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ padding: '3px 10px', borderRadius: 20, background: rc.bg, color: rc.text, fontSize: '0.7rem', fontWeight: 700 }}>
-                    {ROLES.find(r => r.value === u.role)?.label ?? u.role}
-                  </span>
-                </div>
-
-                {/* Department */}
-                <div style={{ fontSize: '0.82rem', color: '#334155' }}>
-                  {u.department ?? '—'}
-                </div>
-
-                {/* Badge */}
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#64748b' }}>
-                  {u.badgeNumber ?? '—'}
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    onClick={() => setEditTarget({ ...u, department: u.department ?? '', badgeNumber: u.badgeNumber ?? '', photoUrl: u.photoUrl })}
-                    style={{ padding: '6px 10px', borderRadius: 6, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600 }}
+      {/* Data Table — exact Entities style with horizontal and vertical grid lines */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+        <div style={{ overflowX: 'auto', maxHeight: 650 }}>
+          <table className="data-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                {USER_COLUMNS.map(col => (
+                  <th
+                    key={col.key}
+                    className={[col.sortable ? 'sortable' : '', sortField === col.key ? 'sorted' : ''].join(' ')}
+                    onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                    style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
                   >
-                    <Pencil size={12} /> Edit
-                  </button>
-                  {u.id !== currentUser?.id && (
-                    <button
-                      onClick={() => setDeleteConfirm(u.id)}
-                      style={{ padding: '6px 10px', borderRadius: 6, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600 }}
-                    >
-                      <Trash2 size={12} /> Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
+                    <span className="col-name">{col.key}</span>
+                    <span className="col-type">{col.type}</span>
+                    {col.sortable && (
+                      <span className="sort-icon">
+                        {sortField === col.key ? (sortOrder === 'asc' ? '↑' : '↓') : '⇅'}
+                      </span>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {paginated.map(u => {
+                const rc = ROLE_COLORS[u.role] ?? { bg: 'rgba(100,100,100,0.1)', text: '#64748b' };
+                return (
+                  <tr key={u.id}>
+                    {/* id */}
+                    <td style={{ color: '#2563eb', fontWeight: 600, borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 120 }}>
+                        {u.id}
+                      </span>
+                    </td>
+
+                    {/* username */}
+                    <td style={{ fontWeight: 600, color: '#0f172a', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      @{u.username}
+                    </td>
+
+                    {/* full_name with avatar */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Avatar user={u} size={26} />
+                        <span style={{ fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap' }}>{u.fullName}</span>
+                        {u.id === currentUser?.id && (
+                          <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#eff6ff', color: '#2563eb', verticalAlign: 'middle' }}>
+                            You
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* role */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      <span style={{ padding: '2px 8px', borderRadius: 12, background: rc.bg, color: rc.text, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {ROLES.find(r => r.value === u.role)?.label ?? u.role}
+                      </span>
+                    </td>
+
+                    {/* department */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      <span title={u.department} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 220 }}>
+                        {u.department ?? <span className="cell-null">NULL</span>}
+                      </span>
+                    </td>
+
+                    {/* badge_number */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      {u.badgeNumber ?? <span className="cell-null">NULL</span>}
+                    </td>
+
+                    {/* email */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      <span title={u.email} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 200 }}>
+                        {u.email}
+                      </span>
+                    </td>
+
+                    {/* is_active */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      <span style={{ color: u.isActive !== false ? '#16a34a' : '#dc2626', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: u.isActive !== false ? '#16a34a' : '#dc2626' }}></span>
+                        {u.isActive !== false ? 'true' : 'false'}
+                      </span>
+                    </td>
+
+                    {/* last_login */}
+                    <td style={{ color: '#64748b', fontSize: '0.78rem', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      {formatTimestamp(u.lastLogin)}
+                    </td>
+
+                    {/* created_at */}
+                    <td style={{ color: '#64748b', fontSize: '0.78rem', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      {formatTimestamp((u as any).createdAt)}
+                    </td>
+
+                    {/* updated_at */}
+                    <td style={{ color: '#64748b', fontSize: '0.78rem', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      {formatTimestamp((u as any).updatedAt)}
+                    </td>
+
+                    {/* audit_logs */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/audit?user=${encodeURIComponent(u.username)}`);
+                        }}
+                        style={{
+                          background: (u.auditLogsCount ?? 0) > 0 ? '#eff6ff' : '#f8fafc',
+                          color: (u.auditLogsCount ?? 0) > 0 ? '#2563eb' : '#94a3b8',
+                          border: `1px solid ${(u.auditLogsCount ?? 0) > 0 ? '#bfdbfe' : '#e2e8f0'}`,
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                        title={`View ${u.auditLogsCount ?? 0} audit log entries for @${u.username}`}
+                      >
+                        <span>{u.auditLogsCount ?? 0} logs</span>
+                      </button>
+                    </td>
+
+                    {/* actions */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <button
+                          onClick={() => setEditTarget({ ...u, department: u.department ?? '', badgeNumber: u.badgeNumber ?? '', photoUrl: u.photoUrl })}
+                          style={{
+                            padding: '4px 8px', borderRadius: 5, background: '#eff6ff',
+                            border: '1px solid #bfdbfe', color: '#2563eb', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600
+                          }}
+                        >
+                          <Pencil size={11} /> Edit
+                        </button>
+                        {u.id !== currentUser?.id && (
+                          <button
+                            onClick={() => setDeleteConfirm(u.id)}
+                            style={{
+                              padding: '4px 8px', borderRadius: 5, background: '#fef2f2',
+                              border: '1px solid #fecaca', color: '#dc2626', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600
+                            }}
+                          >
+                            <Trash2 size={11} /> Delete
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {paginated.length === 0 && (
+                <tr>
+                  <td colSpan={USER_COLUMNS.length} style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>
+                    No users match the current search or filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Pagination Footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+        <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+          {filtered.length > 0 ? ((page - 1) * PAGE_SIZE) + 1 : 0}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} rows
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage(1)}
+            style={{
+              padding: '4px 8px', fontSize: '0.78rem', background: 'none',
+              border: '1px solid #e2e8f0', borderRadius: 5,
+              cursor: page <= 1 ? 'not-allowed' : 'pointer',
+              color: page <= 1 ? '#cbd5e1' : '#475569'
+            }}
+          >
+            «
+          </button>
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage(p => p - 1)}
+            style={{
+              padding: '4px 10px', fontSize: '0.78rem', background: 'none',
+              border: '1px solid #e2e8f0', borderRadius: 5,
+              cursor: page <= 1 ? 'not-allowed' : 'pointer',
+              color: page <= 1 ? '#cbd5e1' : '#475569'
+            }}
+          >
+            Prev
+          </button>
+          <span style={{ fontSize: '0.78rem', color: '#64748b', padding: '0 6px', fontFamily: 'var(--font-mono)' }}>
+            {page} / {totalPages}
+          </span>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => setPage(p => p + 1)}
+            style={{
+              padding: '4px 10px', fontSize: '0.78rem', background: 'none',
+              border: '1px solid #e2e8f0', borderRadius: 5,
+              cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+              color: page >= totalPages ? '#cbd5e1' : '#475569'
+            }}
+          >
+            Next
+          </button>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => setPage(totalPages)}
+            style={{
+              padding: '4px 8px', fontSize: '0.78rem', background: 'none',
+              border: '1px solid #e2e8f0', borderRadius: 5,
+              cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+              color: page >= totalPages ? '#cbd5e1' : '#475569'
+            }}
+          >
+            »
+          </button>
+        </div>
       </div>
 
       {/* Add modal */}

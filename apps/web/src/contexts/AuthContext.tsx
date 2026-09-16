@@ -12,6 +12,8 @@ export interface User {
   photoUrl?: string; // base64 data URL or remote URL
   isActive?: boolean;
   lastLogin?: string | Date;
+  updatedAt?: string | Date;
+  auditLogsCount?: number;
 }
 
 interface AuthContextType {

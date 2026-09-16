@@ -240,13 +240,18 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// GET /api/auth/users — list all users from PostgreSQL
+// GET /api/auth/users — list all users from PostgreSQL with updated_at and audit_logs
 router.get('/users', async (_req: Request, res: Response): Promise<void> => {
   try {
     const result = await query(
-      `SELECT id, username, email, full_name, role, badge_number, department, is_active, last_login, created_at
-       FROM users
-       ORDER BY created_at ASC`
+      `SELECT 
+        u.id, u.username, u.email, u.full_name, u.role, u.badge_number, u.department, 
+        u.is_active, u.last_login, u.created_at, u.updated_at,
+        COUNT(a.id)::int AS audit_logs_count
+       FROM users u
+       LEFT JOIN audit_logs a ON a.user_id = u.id OR a.username = u.username
+       GROUP BY u.id
+       ORDER BY u.created_at ASC`
     );
     const users = result.rows.map((row: any) => ({
       id: row.id,
@@ -259,6 +264,8 @@ router.get('/users', async (_req: Request, res: Response): Promise<void> => {
       isActive: row.is_active,
       lastLogin: row.last_login,
       createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      auditLogsCount: parseInt(row.audit_logs_count || '0', 10),
     }));
     res.json({ users });
   } catch (error) {
