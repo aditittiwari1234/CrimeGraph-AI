@@ -242,9 +242,9 @@ pre {
   left: var(--sidebar-collapsed-width, 56px);
   right: 0;
   z-index: 998;
-  background: #f8fafc;
+  background: #ffffff;
   border-top: 1px solid #ffffff;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.06);
   height: 12px;
 }
 
@@ -252,7 +252,7 @@ pre {
   overflow-x: auto;
   overflow-y: hidden;
   height: 10px;
-  background: #f8fafc;
+  background: #ffffff;
   scrollbar-width: thin;
   scrollbar-color: #94a3b8 #ffffff;
 }
@@ -262,13 +262,13 @@ pre {
 }
 
 .fixed-horizontal-scrollbar::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #ffffff;
 }
 
 .fixed-horizontal-scrollbar::-webkit-scrollbar-thumb {
   background: #94a3b8;
   border-radius: 7px;
-  border: 2px solid #f1f5f9;
+  border: 2px solid #ffffff;
 }
 
 .fixed-horizontal-scrollbar::-webkit-scrollbar-thumb:hover {

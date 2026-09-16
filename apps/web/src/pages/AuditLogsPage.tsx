@@ -572,6 +572,8 @@ export default function AuditLogsPage() {
         marginRight: 'calc(-1 * var(--spacing-lg, 24px))',
         marginBottom: 'calc(-1 * var(--spacing-lg, 24px))',
         width: 'calc(100% + (2 * var(--spacing-lg, 24px)))',
+        background: '#ffffff',
+        minHeight: 'calc(100vh - 280px)',
       }}>
         <div
           ref={tableRef}

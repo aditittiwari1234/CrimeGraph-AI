@@ -121,31 +121,68 @@ router.get('/:type/:id', async (req: AuthenticatedRequest, res: Response): Promi
 
   try {
     const nodeResult = await runCypherQuery(`MATCH (n:${type} {id: $id}) RETURN n`, { id });
-    if (nodeResult.records.length === 0) { res.status(404).json({ error: 'Entity not found' }); return; }
+    if (nodeResult.records.length > 0) {
+      const node = nodeResult.records[0].get('n').properties;
 
-    const node = nodeResult.records[0].get('n').properties;
+      // Get relationships
+      const relResult = await runCypherQuery(`
+        MATCH (n:${type} {id: $id})-[r]-(m)
+        RETURN r, m, labels(m) as targetType, type(r) as relType
+        LIMIT 100
+      `, { id });
 
-    // Get relationships
-    const relResult = await runCypherQuery(`
-      MATCH (n:${type} {id: $id})-[r]-(m)
-      RETURN r, m, labels(m) as targetType, type(r) as relType
-      LIMIT 100
-    `, { id });
+      const relationships = relResult.records.map(r => ({
+        type: r.get('relType'),
+        target: {
+          ...r.get('m').properties,
+          nodeType: r.get('targetType')[0],
+        },
+        properties: r.get('r').properties,
+      }));
 
-    const relationships = relResult.records.map(r => ({
-      type: r.get('relType'),
-      target: {
-        ...r.get('m').properties,
-        nodeType: r.get('targetType')[0],
-      },
-      properties: r.get('r').properties,
-    }));
+      await logAction(req.user?.id, req.user?.username, 'VIEW_ENTITY', 'entity', id, `Viewed ${type}: ${id}`, req.ip || '', req.headers['user-agent'] || '', 'success');
 
-    await logAction(req.user?.id, req.user?.username, 'VIEW_ENTITY', 'entity', id, `Viewed ${type}: ${id}`, req.ip || '', req.headers['user-agent'] || '', 'success');
-
-    res.json({ entity: { ...node, nodeType: type }, relationships, totalRelationships: relationships.length });
+      res.json({ entity: { ...node, nodeType: type }, relationships, totalRelationships: relationships.length });
+      return;
+    }
   } catch (error) {
-    logger.error('Get entity error:', error);
+    logger.warn(`Neo4j entity query failed or empty for ${type}:${id}, checking relational database...`);
+  }
+
+  // Fallback to PostgreSQL tables so real database entities render without fake mocks
+  try {
+    const tableMap: Record<string, { table: string; idCols: string[] }> = {
+      Person: { table: 'persons', idCols: ['id'] },
+      Vehicle: { table: 'vehicles', idCols: ['id', 'license_plate'] },
+      Organization: { table: 'organisations', idCols: ['id', 'name'] },
+      Location: { table: 'locations', idCols: ['id'] },
+      Account: { table: 'bank_accounts', idCols: ['id', 'account_number'] },
+      Phone: { table: 'cdr_records', idCols: ['id', 'caller_number', 'receiver_number'] },
+    };
+
+    const mapping = tableMap[type];
+    if (mapping) {
+      const { getPool } = await import('../db/postgres');
+      const pool = getPool();
+      for (const col of mapping.idCols) {
+        try {
+          const pgRes = await pool.query(`SELECT * FROM ${mapping.table} WHERE ${col} = $1 LIMIT 1`, [id]);
+          if (pgRes.rows.length > 0) {
+            const row = pgRes.rows[0];
+            await logAction(req.user?.id, req.user?.username, 'VIEW_ENTITY', 'entity', id, `Viewed ${type}: ${id} from PostgreSQL`, req.ip || '', req.headers['user-agent'] || '', 'success');
+            res.json({
+              entity: { ...row, nodeType: type },
+              relationships: [],
+              totalRelationships: 0,
+            });
+            return;
+          }
+        } catch {}
+      }
+    }
+    res.status(404).json({ error: 'Entity not found' });
+  } catch (pgError) {
+    logger.error('PostgreSQL get entity error:', pgError);
     res.status(500).json({ error: 'Failed to fetch entity' });
   }
 });

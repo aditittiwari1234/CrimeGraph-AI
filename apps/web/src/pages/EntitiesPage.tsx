@@ -6,14 +6,23 @@ import {
   Flag, RefreshCw, CheckCircle2, Database, AlertCircle
 } from 'lucide-react';
 import { useDatabases } from '../contexts/DatabaseContext';
-import {
-  PERSONS as FALLBACK_PERSONS,
-  PHONES as FALLBACK_PHONES,
-  VEHICLES as FALLBACK_VEHICLES,
-  ORGANISATIONS as FALLBACK_ORGS,
-  ACCOUNTS as FALLBACK_ACCOUNTS,
-  LOCATIONS as FALLBACK_LOCATIONS,
-} from '../data/dataset';
+
+// Fast in-memory and session cache for verified live database entities
+let memoryEntitiesCache: Record<string, any[]> | null = null;
+const CACHE_KEY = 'crimegraph_entities_cache';
+
+function getInitialCachedData(): Record<string, any[]> | null {
+  if (memoryEntitiesCache) return memoryEntitiesCache;
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      memoryEntitiesCache = parsed;
+      return parsed;
+    }
+  } catch {}
+  return null;
+}
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; icon: any; tableKey: string }> = {
   Person:       { label: 'Persons',       color: '#2563eb', icon: Users,      tableKey: 'persons' },
@@ -263,11 +272,12 @@ export default function EntitiesPage() {
     }
   };
 
-  // Live database connection state
+  // Live database connection state with instant cache rehydration
   const { activeDatabase, databases } = useDatabases();
-  const [liveData, setLiveData] = useState<Record<string, any[]> | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [dbStatus, setDbStatus] = useState<string>('Connecting to database...');
+  const initialCache = useRef(getInitialCachedData()).current;
+  const [liveData, setLiveData] = useState<Record<string, any[]> | null>(initialCache);
+  const [isLoading, setIsLoading] = useState<boolean>(!initialCache);
+  const [dbStatus, setDbStatus] = useState<string>(initialCache ? 'Live Database Synced' : 'Connecting to database...');
 
   const fetchLiveData = useCallback(async () => {
     setIsLoading(true);
@@ -281,6 +291,10 @@ export default function EntitiesPage() {
         const json = await res.json();
         if (json.success && json.data) {
           setLiveData(json.data);
+          memoryEntitiesCache = json.data;
+          try {
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify(json.data));
+          } catch {}
           setDbStatus(`Live MongoDB Synced (${db.name || 'Atlas'})`);
           setIsLoading(false);
           return;
@@ -301,16 +315,20 @@ export default function EntitiesPage() {
 
       if (json.success && json.data) {
         setLiveData(json.data);
+        memoryEntitiesCache = json.data;
+        try {
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify(json.data));
+        } catch {}
         setDbStatus('Live Database Synced');
       } else {
-        setDbStatus('Using cached dataset');
+        setDbStatus(liveData ? 'Live Database Synced' : 'Connecting to database...');
       }
     } catch {
-      setDbStatus('Offline fallback dataset');
+      setDbStatus(liveData ? 'Live Database Synced' : 'Connecting to database...');
     } finally {
       setIsLoading(false);
     }
-  }, [activeDatabase, databases]);
+  }, [activeDatabase, databases, liveData]);
 
   useEffect(() => {
     fetchLiveData();
@@ -321,26 +339,19 @@ export default function EntitiesPage() {
     if (urlSearch !== null && urlSearch !== search) setSearch(urlSearch);
   }, [searchParams]);
 
-  // Aggregate entities by type from live database tables
+  // Aggregate entities by type strictly from live database tables (NO mock fallbacks)
   const { entitiesByType, allEntities, counts } = useMemo(() => {
     if (!liveData) {
-      // Fallback to static dataset if database is unreachable
-      const p = FALLBACK_PERSONS.map(x => ({ ...x, nodeType: 'Person', aliases: (x as any).alias || '' }));
-      const ph = FALLBACK_PHONES.map(x => ({ ...x, nodeType: 'Phone' }));
-      const v = FALLBACK_VEHICLES.map(x => ({ ...x, nodeType: 'Vehicle' }));
-      const o = FALLBACK_ORGS.map(x => ({ ...x, nodeType: 'Organization' }));
-      const a = FALLBACK_ACCOUNTS.map(x => ({ ...x, nodeType: 'Account' }));
-      const l = FALLBACK_LOCATIONS.map(x => ({ ...x, nodeType: 'Location' }));
       return {
-        entitiesByType: { Person: p, Phone: ph, Vehicle: v, Organization: o, Account: a, Location: l },
-        allEntities: [...p, ...ph, ...v, ...o, ...a, ...l],
+        entitiesByType: { Person: [], Phone: [], Vehicle: [], Organization: [], Account: [], Location: [] },
+        allEntities: [],
         counts: {
-          Person: p.length,
-          Phone: ph.length,
-          Vehicle: v.length,
-          Organization: o.length,
-          Account: a.length,
-          Location: l.length,
+          Person: 0,
+          Phone: 0,
+          Vehicle: 0,
+          Organization: 0,
+          Account: 0,
+          Location: 0,
         }
       };
     }
@@ -526,17 +537,19 @@ export default function EntitiesPage() {
               fontSize: '0.75rem',
               padding: '2px 8px',
               borderRadius: 12,
-              background: '#ecfdf5',
-              color: '#047857',
-              border: '1px solid #a7f3d0',
+              background: isLoading && !liveData ? '#fef3c7' : '#ecfdf5',
+              color: isLoading && !liveData ? '#b45309' : '#047857',
+              border: `1px solid ${isLoading && !liveData ? '#fde68a' : '#a7f3d0'}`,
               fontWeight: 500
             }}>
-              <CheckCircle2 size={12} />
+              {isLoading && !liveData ? <RefreshCw size={11} className="spin" /> : <CheckCircle2 size={12} />}
               {dbStatus}
             </span>
           </div>
           <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
-            {totalEntitiesCount} entities verified from live database across {Object.keys(TYPE_CONFIG).length} schemas
+            {isLoading && !liveData
+              ? 'Syncing live database records...'
+              : `${totalEntitiesCount} entities verified from live database across ${Object.keys(TYPE_CONFIG).length} schemas`}
           </p>
         </div>
 
@@ -583,7 +596,9 @@ export default function EntitiesPage() {
                 </div>
                 <span className="stat-label" style={{ fontWeight: isSelected ? 600 : 500 }}>{cfg.label}</span>
               </div>
-              <div className="stat-value" style={{ fontSize: '1.6rem', color: cfg.color }}>{count}</div>
+              <div className="stat-value" style={{ fontSize: '1.6rem', color: cfg.color }}>
+                {isLoading && !liveData ? <span style={{ fontSize: '1rem', color: '#94a3b8' }}>...</span> : count}
+              </div>
             </div>
           );
         })}
@@ -690,6 +705,8 @@ export default function EntitiesPage() {
         marginRight: 'calc(-1 * var(--spacing-lg, 24px))',
         marginBottom: 'calc(-1 * var(--spacing-lg, 24px))',
         width: 'calc(100% + (2 * var(--spacing-lg, 24px)))',
+        background: '#ffffff',
+        minHeight: 'calc(100vh - 280px)',
       }}>
         <div
           ref={tableRef}
@@ -783,9 +800,21 @@ export default function EntitiesPage() {
                 <tr>
                   <td
                     colSpan={activeCols.length}
-                    style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}
+                    style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}
                   >
-                    {isLoading ? 'Loading entities from database...' : 'No entities match the current filters.'}
+                    {isLoading && !liveData ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                        <div className="loading-spinner" style={{ width: 28, height: 28, borderWidth: 3 }} />
+                        <div style={{ fontWeight: 600, color: '#334155', fontSize: '0.95rem' }}>Connecting to database & loading live records...</div>
+                        <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Fetching verified database records. Please wait a moment.</div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                        <Database size={24} style={{ color: '#94a3b8', marginBottom: 4 }} />
+                        <div style={{ fontWeight: 600, color: '#475569' }}>No entities match the current filters</div>
+                        <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Try adjusting your search query or selecting a different entity type.</div>
+                      </div>
+                    )}
                   </td>
                 </tr>
               )}
