@@ -108,6 +108,8 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -115,12 +117,13 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.5;
-  min-height: 100vh;
-  overflow-x: hidden;
+  height: 100%;
+  overflow: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -214,7 +217,8 @@ pre {
    ============================================ */
 .app-layout {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .main-content {
@@ -224,13 +228,18 @@ pre {
   min-width: 0;
   margin-left: var(--sidebar-collapsed-width);
   transition: margin-left var(--transition-normal);
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
 }
 
 .page-content {
   flex: 1;
-  padding: var(--spacing-lg);
-  padding-top: calc(var(--topbar-height) + var(--spacing-lg));
+  margin-top: var(--topbar-height);
+  height: calc(100vh - var(--topbar-height));
   overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--spacing-lg);
 }
 
 /* ============================================
@@ -960,15 +969,13 @@ pre {
   right: 0;
   width: 100%;
   height: var(--topbar-height);
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(12px);
+  background: #ffffff;
   border-bottom: 1px solid var(--border-primary);
   display: flex;
   align-items: center;
   padding: 0 var(--spacing-lg);
   gap: var(--spacing-md);
-  z-index: 100;
-
+  z-index: 1000;
 }
 
 .topbar-search {
