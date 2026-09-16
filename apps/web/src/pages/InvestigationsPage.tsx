@@ -191,7 +191,7 @@ export default function InvestigationsPage() {
               }}
               onClick={() => navigate(`/investigations/${inv.case_number}`)}
               onMouseEnter={e => (e.currentTarget.style.borderColor = priorityColor[inv.priority])}
-              onMouseLeave={e => {}}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>

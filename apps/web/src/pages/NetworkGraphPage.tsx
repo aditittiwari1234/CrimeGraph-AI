@@ -7,7 +7,7 @@ import {
   Download, Info, X, ChevronRight, Loader, Network, GitBranch
 } from 'lucide-react';
 import api from '../lib/api';
-import { ALL_ENTITIES, GRAPH_EDGES } from '../data/dataset';
+import { ALL_ENTITIES, GRAPH_EDGES, FIR_RECORDS } from '../data/dataset';
 
 interface GraphNode {
   id: string;
@@ -251,30 +251,13 @@ export default function NetworkGraphPage() {
     loadDemoNetwork(cy);
   }, [investigationCase, entityIdParam, entityTypeParam]);
 
-  const loadDemoNetwork = async (cy?: Core) => {
-    const instance = cy || cyInstance.current;
-    if (!instance) return;
-    setLoading(true);
-
-    try {
-      const res = investigationCase
-        ? await api.get(`/api/graph/investigation/${encodeURIComponent(investigationCase)}`)
-        : entityIdParam
-          ? await api.get(`/api/entities/${encodeURIComponent(entityTypeParam)}/${encodeURIComponent(entityIdParam)}/network?depth=2&limit=80`)
-          : await api.get('/api/entities/Person/P001/network?depth=2&limit=80');
-      const { nodes, edges } = res.data;
-      if (nodes?.length || investigationCase || entityIdParam) renderGraph(instance, nodes || [], edges || []);
-      else renderDemoGraph(instance);
-    } catch {
-      // Use synthetic demo data
-      renderDemoGraph(instance);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const renderGraph = (cy: Core, nodes: GraphNode[], edges: GraphEdge[]) => {
     cy.elements().remove();
+
+    const nodeIds = new Set(nodes.map(n => n.id));
+
+    // Ensure we never pass edges with missing source or target, which crashes Cytoscape!
+    const validEdges = edges.filter(e => e && e.source && e.target && nodeIds.has(e.source) && nodeIds.has(e.target));
 
     const cyNodes = nodes.map(n => ({
       group: 'nodes' as const,
@@ -286,33 +269,41 @@ export default function NetworkGraphPage() {
       },
     }));
 
-    const cyEdges = edges.map((e, i) => ({
+    const cyEdges = validEdges.map((e, i) => ({
       group: 'edges' as const,
       data: {
-        id: e.id || `edge-${i}`,
+        id: e.id || `edge-${i}-${e.source}-${e.target}`,
         source: e.source,
         target: e.target,
         type: e.type,
         confidence: e.confidence || 0.8,
-        label: e.type.replace(/_/g, ' '),
+        label: e.type ? e.type.replace(/_/g, ' ') : '',
         relSource: e.relSource,
         recordRef: e.recordRef,
         timestamp: e.timestamp,
       },
     }));
 
-    cy.add([...cyNodes, ...cyEdges]);
+    try {
+      cy.add([...cyNodes, ...cyEdges]);
+    } catch (err) {
+      console.warn('Cytoscape add warning:', err);
+    }
 
-    cy.layout({
-      name: 'cose',
-      randomize: true,
-      animate: true,
-      animationDuration: 800,
-      componentSpacing: 100,
-      nodeRepulsion: () => 8000,
-      idealEdgeLength: () => 100,
-      edgeElasticity: () => 100,
-    } as any).run();
+    try {
+      cy.layout({
+        name: 'cose',
+        randomize: true,
+        animate: true,
+        animationDuration: 800,
+        componentSpacing: 100,
+        nodeRepulsion: () => 8000,
+        idealEdgeLength: () => 100,
+        edgeElasticity: () => 100,
+      } as any).run();
+    } catch (err) {
+      console.warn('Cytoscape layout warning:', err);
+    }
 
     setNodeCount(cyNodes.length);
     setEdgeCount(cyEdges.length);
@@ -333,19 +324,130 @@ export default function NetworkGraphPage() {
     }
   };
 
-  useEffect(() => {
-    if (investigationCase || entityIdParam) return;
-    Promise.all([
-      api.get('/api/investigations/officers'),
-      api.get('/api/investigations?limit=50'),
-    ]).then(([officerResponse, caseResponse]) => {
-      setOfficers(officerResponse.data.officers || []);
-      setCases(caseResponse.data.investigations || []);
-    }).catch(() => {
-      setOfficers([]);
-      setCases([]);
+  const renderInvestigationFallback = (cy: Core, caseRef: string) => {
+    const normalized = caseRef.trim().toLowerCase();
+    const targetFir = FIR_RECORDS.find(f =>
+      f.id.toLowerCase() === normalized ||
+      f.firNumber.toLowerCase() === normalized ||
+      f.firNumber.toLowerCase().replace('fir-', 'case-') === normalized ||
+      normalized.includes(f.id.toLowerCase()) ||
+      normalized.includes(f.firNumber.toLowerCase())
+    ) || FIR_RECORDS[0];
+
+    const linkedIds = new Set<string>(targetFir.linkedEntities || []);
+    linkedIds.add(targetFir.id);
+
+    // Include 1st degree neighbor nodes connected via GRAPH_EDGES
+    GRAPH_EDGES.forEach(e => {
+      if (linkedIds.has(e.source)) linkedIds.add(e.target);
+      if (linkedIds.has(e.target)) linkedIds.add(e.source);
     });
-  }, [investigationCase, entityIdParam]);
+
+    const demoNodes: GraphNode[] = (ALL_ENTITIES as any[])
+      .filter(e => linkedIds.has(e.id))
+      .map(e => ({
+        id: e.id,
+        nodeType: e.nodeType,
+        name: e.name || e.number || e.licensePlate || e.accountNumber || e.id,
+        ...e,
+      }));
+
+    if (!demoNodes.some(n => n.id === targetFir.id)) {
+      demoNodes.push({
+        id: targetFir.id,
+        nodeType: 'Case',
+        name: targetFir.firNumber,
+        firNumber: targetFir.firNumber,
+        ...targetFir,
+      });
+    }
+
+    const nodeIds = new Set(demoNodes.map(n => n.id));
+    const demoEdges: GraphEdge[] = GRAPH_EDGES
+      .filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
+      .map((e, i) => ({
+        id: `e-inv-${i}`,
+        source: e.source,
+        target: e.target,
+        type: e.type,
+        confidence: e.confidence,
+        relSource: (e as any).source_ref || 'CASE_INTELLIGENCE_LINK',
+      }));
+
+    // Ensure edges connecting FIR to its linked entities exist
+    (targetFir.linkedEntities || []).forEach((entityId, idx) => {
+      if (nodeIds.has(entityId)) {
+        const alreadyHasEdge = demoEdges.some(
+          e => (e.source === entityId && e.target === targetFir.id) || (e.source === targetFir.id && e.target === entityId)
+        );
+        if (!alreadyHasEdge) {
+          demoEdges.push({
+            id: `fir-link-${idx}`,
+            source: entityId,
+            target: targetFir.id,
+            type: 'APPEARED_IN_CASE',
+            confidence: 0.99,
+            relSource: targetFir.firNumber,
+          });
+        }
+      }
+    });
+
+    renderGraph(cy, demoNodes, demoEdges);
+  };
+
+  const renderEntityFallback = (cy: Core, entityId: string, fallbackType: string) => {
+    const focusIds = new Set<string>([entityId]);
+
+    // 1-hop neighbors
+    GRAPH_EDGES.forEach(e => {
+      if (e.source === entityId) focusIds.add(e.target);
+      if (e.target === entityId) focusIds.add(e.source);
+    });
+
+    // 2-hop neighbors (capped to 40 nodes to maintain performance and clarity)
+    const firstHop = Array.from(focusIds);
+    for (const id of firstHop) {
+      if (focusIds.size >= 40) break;
+      GRAPH_EDGES.forEach(e => {
+        if (focusIds.size >= 40) return;
+        if (e.source === id) focusIds.add(e.target);
+        if (e.target === id) focusIds.add(e.source);
+      });
+    }
+
+    const demoNodes: GraphNode[] = (ALL_ENTITIES as any[])
+      .filter(e => focusIds.has(e.id))
+      .map(e => ({
+        id: e.id,
+        nodeType: e.nodeType,
+        name: e.name || e.number || e.licensePlate || e.accountNumber || e.id,
+        ...e,
+      }));
+
+    if (!demoNodes.some(n => n.id === entityId)) {
+      demoNodes.push({
+        id: entityId,
+        nodeType: fallbackType || 'Person',
+        name: entityId,
+      });
+      focusIds.add(entityId);
+    }
+
+    const nodeIds = new Set(demoNodes.map(n => n.id));
+    const demoEdges: GraphEdge[] = GRAPH_EDGES
+      .filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
+      .map((e, i) => ({
+        id: `e-ent-${i}`,
+        source: e.source,
+        target: e.target,
+        type: e.type,
+        confidence: e.confidence,
+        relSource: (e as any).source_ref || 'ENTITY_NETWORK_EXPANSION',
+      }));
+
+    renderGraph(cy, demoNodes, demoEdges);
+  };
 
   const renderDemoGraph = (cy: Core) => {
     const demoNodes: GraphNode[] = (ALL_ENTITIES as any[]).map(e => ({
@@ -367,19 +469,95 @@ export default function NetworkGraphPage() {
     renderGraph(cy, demoNodes, demoEdges);
   };
 
+  const loadDemoNetwork = async (cy?: Core) => {
+    const instance = cy || cyInstance.current;
+    if (!instance) return;
+    setLoading(true);
+
+    let fetchedNodes: GraphNode[] | null = null;
+    let fetchedEdges: GraphEdge[] | null = null;
+
+    try {
+      const res = investigationCase
+        ? await api.get(`/api/graph/investigation/${encodeURIComponent(investigationCase)}`)
+        : entityIdParam
+          ? await api.get(`/api/entities/${encodeURIComponent(entityTypeParam)}/${encodeURIComponent(entityIdParam)}/network?depth=2&limit=80`)
+          : await api.get('/api/entities/Person/P001/network?depth=2&limit=80');
+
+      if (res.data?.nodes && res.data.nodes.length > 0) {
+        fetchedNodes = res.data.nodes;
+        fetchedEdges = res.data.edges || [];
+      }
+    } catch {
+      // API request failed or Neo4j offline; proceed to fallback
+    } finally {
+      setLoading(false);
+    }
+
+    if (fetchedNodes && fetchedNodes.length > 0) {
+      renderGraph(instance, fetchedNodes, fetchedEdges || []);
+    } else {
+      if (investigationCase) {
+        renderInvestigationFallback(instance, investigationCase);
+      } else if (entityIdParam) {
+        renderEntityFallback(instance, entityIdParam, entityTypeParam);
+      } else {
+        renderDemoGraph(instance);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (investigationCase || entityIdParam) return;
+    Promise.all([
+      api.get('/api/investigations/officers'),
+      api.get('/api/investigations?limit=50'),
+    ]).then(([officerResponse, caseResponse]) => {
+      setOfficers(officerResponse.data.officers || []);
+      setCases(caseResponse.data.investigations || []);
+    }).catch(() => {
+      setOfficers([]);
+      setCases([]);
+    });
+  }, [investigationCase, entityIdParam]);
+
   const handleSearch = async () => {
     if (!searchTerm || !cyInstance.current) return;
     setLoading(true);
     try {
       const res = await api.get(`/api/entities/search?q=${encodeURIComponent(searchTerm)}&type=${entityType}&limit=5`);
-      const entities = res.data.entities || [];
+      const entities = res.data?.entities || [];
       if (entities.length > 0) {
         const first = entities[0];
-        const netRes = await api.get(`/api/entities/${first.nodeType}/${first.id}/network?depth=2&limit=60`);
-        renderGraph(cyInstance.current, netRes.data.nodes, netRes.data.edges);
+        try {
+          const netRes = await api.get(`/api/entities/${first.nodeType}/${first.id}/network?depth=2&limit=60`);
+          if (netRes.data?.nodes && netRes.data.nodes.length > 0) {
+            renderGraph(cyInstance.current, netRes.data.nodes, netRes.data.edges || []);
+            return;
+          }
+        } catch {
+          // fall through to local fallback
+        }
+        renderEntityFallback(cyInstance.current, first.id, first.nodeType);
+      } else {
+        const localMatch = (ALL_ENTITIES as any[]).find(e => {
+          const label = (e.name || e.number || e.licensePlate || e.accountNumber || e.id || '').toLowerCase();
+          const matchTerm = label.includes(searchTerm.toLowerCase());
+          return entityType ? matchTerm && e.nodeType === entityType : matchTerm;
+        });
+        if (localMatch) {
+          renderEntityFallback(cyInstance.current, localMatch.id, localMatch.nodeType);
+        }
       }
     } catch {
-      // No-op
+      const localMatch = (ALL_ENTITIES as any[]).find(e => {
+        const label = (e.name || e.number || e.licensePlate || e.accountNumber || e.id || '').toLowerCase();
+        const matchTerm = label.includes(searchTerm.toLowerCase());
+        return entityType ? matchTerm && e.nodeType === entityType : matchTerm;
+      });
+      if (localMatch && cyInstance.current) {
+        renderEntityFallback(cyInstance.current, localMatch.id, localMatch.nodeType);
+      }
     } finally {
       setLoading(false);
     }
@@ -390,19 +568,26 @@ export default function NetworkGraphPage() {
     setLoading(true);
     try {
       const res = await api.post('/api/graph/expand', { nodeId: node.id, nodeType: node.nodeType, limit: 20 });
-      const { nodes, edges } = res.data;
+      const { nodes = [], edges = [] } = res.data || {};
       const existingIds = new Set(cyInstance.current.nodes().map((n: any) => n.id()));
 
       const newNodes = nodes.filter((n: GraphNode) => !existingIds.has(n.id));
       const newCyNodes = newNodes.map((n: GraphNode) => ({
         data: { id: n.id, label: getNodeLabel(n), nodeType: n.nodeType, ...n },
       }));
-      const newEdges = edges.map((e: GraphEdge, i: number) => ({
-        data: { id: e.id || `expand-${i}`, source: e.source, target: e.target, label: e.type?.replace(/_/g, ' '), ...e },
+
+      const allKnownIds = new Set([...existingIds, ...newNodes.map((n: GraphNode) => n.id)]);
+      const validNewEdges = edges.filter((e: GraphEdge) => e && e.source && e.target && allKnownIds.has(e.source) && allKnownIds.has(e.target));
+      const newEdges = validNewEdges.map((e: GraphEdge, i: number) => ({
+        data: { id: e.id || `expand-${i}-${e.source}-${e.target}`, source: e.source, target: e.target, label: e.type?.replace(/_/g, ' '), ...e },
       }));
 
-      cyInstance.current.add([...newCyNodes, ...newEdges]);
-      cyInstance.current.layout({ name: 'cose', randomize: false, animate: true, animationDuration: 600 } as any).run();
+      try {
+        cyInstance.current.add([...newCyNodes, ...newEdges]);
+        cyInstance.current.layout({ name: 'cose', randomize: false, animate: true, animationDuration: 600 } as any).run();
+      } catch (err) {
+        console.warn('Expand layout warning:', err);
+      }
       setNodeCount(cyInstance.current.nodes().length);
       setEdgeCount(cyInstance.current.edges().length);
     } catch {
@@ -466,40 +651,7 @@ export default function NetworkGraphPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - var(--topbar-height) - 48px)', gap: 12 }}>
-      {!investigationCase && !entityIdParam && (
-        <div className="card" style={{ padding: '12px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-            <div>
-              <h3 style={{ fontSize: '0.95rem', marginBottom: 2 }}>Investigator Network Overview</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>Inspectors, assigned cases, and people represented in the overall graph</p>
-            </div>
-            <span className="badge badge-info">{graphPeople.length} people in view</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-            <div>
-              <div className="stat-label" style={{ marginBottom: 6 }}>Inspectors</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {officers.slice(0, 4).map(officer => <span key={officer.id} className="badge badge-neutral">{officer.full_name}</span>)}
-                {officers.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>No officers loaded</span>}
-              </div>
-            </div>
-            <div>
-              <div className="stat-label" style={{ marginBottom: 6 }}>Assigned Cases</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 54, overflowY: 'auto' }}>
-                {cases.slice(0, 3).map(item => <span key={item.id} style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>{item.case_number} · {item.assigned_to_name || 'Unassigned'}</span>)}
-                {cases.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>No cases loaded</span>}
-              </div>
-            </div>
-            <div>
-              <div className="stat-label" style={{ marginBottom: 6 }}>People in Graph</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {graphPeople.slice(0, 4).map(person => <span key={person.id} className="badge badge-neutral">{getNodeLabel(person)}</span>)}
-                {graphPeople.length > 4 && <span className="badge badge-info">+{graphPeople.length - 4} more</span>}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+
       {investigationCase && (
         <div className="ai-disclaimer">Focused investigation graph: <strong>{investigationCase}</strong>. Expand nodes to inspect related people, accounts, locations, and communications.</div>
       )}
