@@ -1,130 +1,936 @@
-import { useState, useEffect } from 'react';
-import { BookOpen, Search } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import {
+  Search, RefreshCw, ShieldCheck, Copy, Check, Eye, X,
+  ChevronLeft, ChevronRight, Filter, Database, Hash, User
+} from 'lucide-react';
 import api from '../lib/api';
 
-const DEMO_AUDIT = [
-  { id: '1', actor_name: 'System Administrator', action: 'LOGIN', resource_type: 'AUTH', resource_id: null, details: {}, ip_address: '127.0.0.1', created_at: '2026-09-14T00:00:00Z', is_sensitive: false },
-  { id: '2', actor_name: 'System Administrator', action: 'SEED_EXECUTED', resource_type: 'SYSTEM', resource_id: null, details: { persons: 30 }, ip_address: '127.0.0.1', created_at: '2026-09-14T00:01:00Z', is_sensitive: false },
-  { id: '3', actor_name: 'System Administrator', action: 'CREATE', resource_type: 'INVESTIGATION', resource_id: '1', details: { caseNumber: 'CASE-2026-00451', title: 'Operation Northern Web' }, ip_address: '127.0.0.1', created_at: '2026-09-14T00:02:00Z', is_sensitive: false },
-  { id: '4', actor_name: 'System Administrator', action: 'GRAPH_QUERY', resource_type: 'GRAPH', resource_id: 'P001', details: { query: 'getEntityNetwork', depth: 2 }, ip_address: '127.0.0.1', created_at: '2026-09-14T00:03:00Z', is_sensitive: true },
-  { id: '5', actor_name: 'System Administrator', action: 'AI_QUERY', resource_type: 'AI', resource_id: null, details: { queryType: 'connection', confidence: 0.78 }, ip_address: '127.0.0.1', created_at: '2026-09-14T00:04:00Z', is_sensitive: false },
-  { id: '6', actor_name: 'System Administrator', action: 'EVIDENCE_VERIFY', resource_type: 'EVIDENCE', resource_id: 'EVD-FIR-00451', details: { status: 'VALID' }, ip_address: '127.0.0.1', created_at: '2026-09-14T00:05:00Z', is_sensitive: false },
+interface AuditLog {
+  id: string;
+  user_id: string | null;
+  username: string;
+  full_name?: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  description: string;
+  ip_address: string;
+  user_agent: string;
+  result: string;
+  metadata: any;
+  data_hash: string;
+  previous_hash: string;
+  timestamp: string;
+}
+
+interface ColumnDef {
+  key: string;
+  type: string;
+  sortable: boolean;
+}
+
+const AUDIT_COLUMNS: ColumnDef[] = [
+  { key: 'id',            type: 'uuid',        sortable: true },
+  { key: 'timestamp',     type: 'timestamptz', sortable: true },
+  { key: 'user_id',       type: 'varchar',     sortable: true },
+  { key: 'username',      type: 'varchar',     sortable: true },
+  { key: 'action',        type: 'varchar',     sortable: true },
+  { key: 'resource_type', type: 'varchar',     sortable: true },
+  { key: 'resource_id',   type: 'varchar',     sortable: true },
+  { key: 'description',   type: 'text',        sortable: true },
+  { key: 'result',        type: 'varchar',     sortable: true },
+  { key: 'ip_address',    type: 'varchar',     sortable: true },
+  { key: 'user_agent',    type: 'text',        sortable: false },
+  { key: 'metadata',      type: 'jsonb',       sortable: false },
+  { key: 'data_hash',     type: 'varchar',     sortable: false },
+  { key: 'previous_hash', type: 'varchar',     sortable: false },
 ];
 
-const ACTION_COLORS: Record<string, string> = {
-  LOGIN: '#22c55e', LOGOUT: '#94a3b8', CREATE: '#3b82f6', READ: '#06b6d4',
-  UPDATE: '#eab308', DELETE: '#ef4444', GRAPH_QUERY: '#8b5cf6', AI_QUERY: '#ec4899',
-  EVIDENCE_VERIFY: '#22c55e', SEED_EXECUTED: '#f97316',
+const ACTION_STYLES: Record<string, { bg: string; text: string; border: string }> = {
+  LOGIN:           { bg: '#f0fdf4', text: '#16a34a', border: '#bbf7d0' },
+  LOGOUT:          { bg: '#f8fafc', text: '#64748b', border: '#e2e8f0' },
+  CREATE:          { bg: '#eff6ff', text: '#2563eb', border: '#bfdbfe' },
+  READ:            { bg: '#ecfeff', text: '#0891b2', border: '#a5f3fc' },
+  UPDATE:          { bg: '#fefce8', text: '#ca8a04', border: '#fef08a' },
+  DELETE:          { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
+  GRAPH_QUERY:     { bg: '#f5f3ff', text: '#7c3aed', border: '#ddd6fe' },
+  AI_QUERY:        { bg: '#fdf2f8', text: '#db2777', border: '#fbcfe8' },
+  SEARCH:          { bg: '#eef2ff', text: '#4f46e5', border: '#c7d2fe' },
+  SEED_EXECUTED:   { bg: '#fff7ed', text: '#ea580c', border: '#fed7aa' },
+  EVIDENCE_VERIFY: { bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' },
+  EXPORT:          { bg: '#f0fdfa', text: '#0d9488', border: '#99f6e4' },
 };
 
-export default function AuditLogsPage() {
-  const [logs, setLogs] = useState(DEMO_AUDIT);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+function formatTimestamp(iso: string): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch {
+    return iso;
+  }
+}
 
+export default function AuditLogsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const userQuery = searchParams.get('user') || '';
+
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [actionFilter, setActionFilter] = useState('');
+  const [resultFilter, setResultFilter] = useState('');
+  const [userFilter, setUserFilter] = useState(userQuery);
+
+  const [sortField, setSortField] = useState<string>('timestamp');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(20);
+
+  const [activeLogModal, setActiveLogModal] = useState<AuditLog | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1800);
+  };
+
+  // Sync state if URL query param changes
   useEffect(() => {
-    api.get('/api/audit?limit=50').then(res => {
-      if (res.data.logs?.length > 0) setLogs(res.data.logs);
-    }).catch(() => {});
+    if (userQuery) {
+      setUserFilter(userQuery);
+    }
+  }, [userQuery]);
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Fetch all logs from PostgreSQL audit_logs table
+      const res = await api.get('/api/audit?limit=1000');
+      if (res.data && Array.isArray(res.data.logs)) {
+        setLogs(res.data.logs);
+        setTotalCount(res.data.total ?? res.data.logs.length);
+      }
+    } catch (err) {
+      console.error('Failed to load audit logs:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const filtered = logs.filter(l =>
-    !search || l.actor_name?.toLowerCase().includes(search.toLowerCase()) ||
-    l.action.toLowerCase().includes(search.toLowerCase()) ||
-    l.resource_type.toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
+  // Unique actions for the filter dropdown
+  const uniqueActions = useMemo(() => {
+    const set = new Set<string>();
+    logs.forEach(l => {
+      if (l.action) set.add(l.action);
+    });
+    return Array.from(set).sort();
+  }, [logs]);
+
+  // Sorting handler
+  const handleSort = (key: string) => {
+    if (sortField === key) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(key);
+      setSortOrder('asc');
+    }
+  };
+
+  // Filtered dataset
+  const filtered = useMemo(() => {
+    return logs.filter(l => {
+      // User filter
+      if (userFilter) {
+        const uTarget = userFilter.toLowerCase();
+        const matchesUser =
+          (l.username && l.username.toLowerCase().includes(uTarget)) ||
+          (l.user_id && l.user_id.toLowerCase().includes(uTarget)) ||
+          (l.full_name && l.full_name.toLowerCase().includes(uTarget));
+        if (!matchesUser) return false;
+      }
+
+      // Action filter
+      if (actionFilter && l.action !== actionFilter) {
+        return false;
+      }
+
+      // Result filter
+      if (resultFilter && l.result?.toLowerCase() !== resultFilter.toLowerCase()) {
+        return false;
+      }
+
+      // Global text search
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const inId = l.id?.toLowerCase().includes(q);
+        const inUser = l.username?.toLowerCase().includes(q) || l.user_id?.toLowerCase().includes(q) || l.full_name?.toLowerCase().includes(q);
+        const inAction = l.action?.toLowerCase().includes(q);
+        const inResource = l.resource_type?.toLowerCase().includes(q) || l.resource_id?.toLowerCase().includes(q);
+        const inDesc = l.description?.toLowerCase().includes(q);
+        const inIp = l.ip_address?.toLowerCase().includes(q);
+        const inHash = l.data_hash?.toLowerCase().includes(q) || l.previous_hash?.toLowerCase().includes(q);
+        return inId || inUser || inAction || inResource || inDesc || inIp || inHash;
+      }
+
+      return true;
+    });
+  }, [logs, userFilter, actionFilter, resultFilter, search]);
+
+  // Sorted dataset
+  const sorted = useMemo(() => {
+    if (!sortField) return filtered;
+    return [...filtered].sort((a, b) => {
+      const aVal = (a as any)[sortField];
+      const bVal = (b as any)[sortField];
+
+      if (aVal === bVal) return 0;
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+
+      if (sortField === 'timestamp') {
+        const at = new Date(aVal).getTime();
+        const bt = new Date(bVal).getTime();
+        return sortOrder === 'asc' ? at - bt : bt - at;
+      }
+
+      const strA = String(aVal).toLowerCase();
+      const strB = String(bVal).toLowerCase();
+      return sortOrder === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
+    });
+  }, [filtered, sortField, sortOrder]);
+
+  // Paginated dataset
+  const paginated = useMemo(() => {
+    if (pageSize === -1) return sorted;
+    const start = (page - 1) * pageSize;
+    return sorted.slice(start, start + pageSize);
+  }, [sorted, page, pageSize]);
+
+  const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(sorted.length / pageSize));
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [search, actionFilter, resultFilter, userFilter, pageSize]);
 
   return (
     <div className="fade-in">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      {/* Top Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: 4 }}>Audit Logs</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Immutable audit trail of all system access and actions</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h1 style={{ fontSize: '1.45rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+              Audit Logs
+            </h1>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', borderRadius: 20,
+              background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0'
+            }}>
+              <ShieldCheck size={13} />
+              Cryptographic Tamper-Proof Chain
+            </span>
+          </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', margin: '4px 0 0 0' }}>
+            Complete historical trail of all actions stored directly in the PostgreSQL <code style={{ fontFamily: 'var(--font-mono)', background: '#f1f5f9', padding: '1px 5px', borderRadius: 4 }}>audit_logs</code> table.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            onClick={fetchLogs}
+            disabled={loading}
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', padding: '7px 14px' }}
+            title="Reload all audit logs from database"
+          >
+            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+            {loading ? 'Syncing...' : 'Sync Database'}
+          </button>
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 16, background: 'rgba(22,163,74,0.04)', borderColor: '#bbf7d0' }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-          <BookOpen size={14} color="#22c55e" />
-          <span>All audit records are stored with hash verification for tamper detection. Sensitive operations are flagged and logged with full context.</span>
+      {/* Database & Hash Banner */}
+      <div className="card" style={{ marginBottom: 16, background: '#f8fafc', borderColor: '#e2e8f0', padding: '12px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#475569' }}>
+            <Database size={15} color="#2563eb" />
+            <span>
+              Connected to <strong>PostgreSQL / Neon DB</strong> &bull; Showing all <strong>14 schema columns</strong> &bull; Total records in DB: <strong>{totalCount}</strong>
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.78rem', color: '#64748b' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Hash size={13} color="#059669" />
+              SHA-256 Hashing Active
+            </span>
+            <span>&bull;</span>
+            <span>Genesis Root Linked</span>
+          </div>
         </div>
       </div>
 
-      <div className="search-input-wrapper" style={{ marginBottom: 16, maxWidth: 400 }}>
-        <Search size={15} className="search-icon" />
-        <input className="form-input" placeholder="Search logs..." value={search} onChange={e => setSearch(e.target.value)} />
-      </div>
+      {/* Active User Filter Notification Chip */}
+      {userFilter && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 14,
+          padding: '4px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 20,
+          fontSize: '0.8rem', color: '#1d4ed8'
+        }}>
+          <User size={13} />
+          <span>Filtered by officer: <strong>@{userFilter}</strong></span>
+          <button
+            onClick={() => {
+              setUserFilter('');
+              searchParams.delete('user');
+              setSearchParams(searchParams);
+            }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1d4ed8', padding: 0, display: 'flex', alignItems: 'center' }}
+            title="Clear officer filter"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Timestamp</th>
-              <th>Actor</th>
-              <th>Action</th>
-              <th>Resource</th>
-              <th>Details</th>
-              <th>IP Address</th>
-              <th>Sensitivity</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(log => (
-              <tr key={log.id}>
-                <td>
-                  <span className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    {new Date(log.created_at).toLocaleString('en-IN')}
-                  </span>
-                </td>
-                <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{log.actor_name}</td>
-                <td>
-                  <span style={{
-                    padding: '2px 8px', borderRadius: 4, fontSize: '0.72rem', fontWeight: 700,
-                    fontFamily: 'var(--font-mono)', letterSpacing: '0.04em',
-                    background: `${ACTION_COLORS[log.action] || '#64748b'}20`,
-                    color: ACTION_COLORS[log.action] || '#94a3b8',
-                    border: `1px solid ${ACTION_COLORS[log.action] || '#64748b'}30`,
-                  }}>
-                    {log.action}
-                  </span>
-                </td>
-                <td>
-                  <div>
-                    <span className="badge badge-neutral" style={{ fontSize: '0.65rem' }}>{log.resource_type}</span>
-                    {log.resource_id && <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', marginTop: 2 }}>{log.resource_id}</div>}
-                  </div>
-                </td>
-                <td style={{ maxWidth: 200 }}>
-                  <span style={{ fontSize: '0.72rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', wordBreak: 'break-all' }}>
-                    {log.details && Object.keys(log.details).length > 0
-                      ? Object.entries(log.details as Record<string, unknown>).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ').substring(0, 60)
-                      : '—'}
-                  </span>
-                </td>
-                <td><span className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{log.ip_address}</span></td>
-                <td>
-                  {log.is_sensitive
-                    ? <span className="badge badge-high">Sensitive</span>
-                    : <span className="badge badge-neutral">Normal</span>
-                  }
-                </td>
-              </tr>
+      {/* Filters Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260, maxWidth: 650 }}>
+          {/* Search Box */}
+          <div className="search-input-wrapper" style={{ flex: 1 }}>
+            <Search size={14} className="search-icon" />
+            <input
+              className="form-input"
+              style={{ height: 34, fontSize: '0.82rem', paddingLeft: 34 }}
+              placeholder="Search by user, action, resource, IP, description, hash..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Action Filter */}
+          <select
+            value={actionFilter}
+            onChange={e => setActionFilter(e.target.value)}
+            style={{
+              height: 34, padding: '0 10px', fontSize: '0.8rem',
+              background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6,
+              color: '#334155', cursor: 'pointer', outline: 'none'
+            }}
+          >
+            <option value="">All Actions ({uniqueActions.length})</option>
+            {uniqueActions.map(act => (
+              <option key={act} value={act}>{act}</option>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </select>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-        <span>Showing {filtered.length} of {logs.length} records</span>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>←</button>
-          <span style={{ padding: '6px 12px', background: 'var(--bg-tertiary)', borderRadius: 6, border: '1px solid var(--border-primary)' }}>
-            Page {page}
+          {/* Result Filter */}
+          <select
+            value={resultFilter}
+            onChange={e => setResultFilter(e.target.value)}
+            style={{
+              height: 34, padding: '0 10px', fontSize: '0.8rem',
+              background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6,
+              color: '#334155', cursor: 'pointer', outline: 'none'
+            }}
+          >
+            <option value="">All Results</option>
+            <option value="success">Success</option>
+            <option value="failure">Failure</option>
+          </select>
+
+          {(search || actionFilter || resultFilter || userFilter) && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setActionFilter('');
+                setResultFilter('');
+                setUserFilter('');
+                searchParams.delete('user');
+                setSearchParams(searchParams);
+              }}
+              style={{
+                height: 34, padding: '0 10px', fontSize: '0.78rem',
+                background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 6,
+                color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+              }}
+            >
+              <X size={12} /> Clear
+            </button>
+          )}
+        </div>
+
+        {/* Row Counts & Page Size */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.8rem', color: '#64748b' }}>
+          <span>
+            Showing <strong>{filtered.length}</strong> {filtered.length === 1 ? 'row' : 'rows'}
+            {filtered.length !== logs.length && ` (filtered from ${logs.length})`}
           </span>
-          <button className="btn btn-secondary btn-sm" onClick={() => setPage(p => p + 1)}>→</button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Per page:</span>
+            <select
+              value={pageSize}
+              onChange={e => setPageSize(Number(e.target.value))}
+              style={{
+                height: 28, padding: '0 6px', fontSize: '0.75rem',
+                background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 5,
+                color: '#334155', cursor: 'pointer', outline: 'none'
+              }}
+            >
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={-1}>All ({logs.length})</option>
+            </select>
+          </div>
         </div>
       </div>
+
+      {/* Main Table Card with full horizontal and vertical grid lines */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+        <div style={{ overflowX: 'auto', maxHeight: 720 }}>
+          <table className="data-table" style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1600 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 2 }}>
+                {AUDIT_COLUMNS.map(col => (
+                  <th
+                    key={col.key}
+                    className={[col.sortable ? 'sortable' : '', sortField === col.key ? 'sorted' : ''].join(' ')}
+                    onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                    style={{
+                      borderRight: '1px solid #e2e8f0',
+                      borderBottom: '1px solid #e2e8f0',
+                      background: '#f8fafc',
+                      padding: '10px 12px',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <span className="col-name">{col.key}</span>
+                    <span className="col-type">{col.type}</span>
+                    {col.sortable && (
+                      <span className="sort-icon">
+                        {sortField === col.key ? (sortOrder === 'asc' ? '↑' : '↓') : '⇅'}
+                      </span>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody>
+              {paginated.map(log => {
+                const actStyle = ACTION_STYLES[log.action] || { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
+                const isSuccess = log.result?.toLowerCase() === 'success';
+
+                return (
+                  <tr
+                    key={log.id}
+                    onClick={() => setActiveLogModal(log)}
+                    style={{ cursor: 'pointer' }}
+                    title="Click row to inspect full audit details"
+                  >
+                    {/* 1. id (uuid) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#2563eb', fontWeight: 600 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span title={log.id} style={{ maxWidth: 105, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {log.id.substring(0, 8)}...
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(log.id, `id-${log.id}`);
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#94a3b8' }}
+                          title="Copy UUID"
+                        >
+                          {copiedKey === `id-${log.id}` ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
+                        </button>
+                      </div>
+                    </td>
+
+                    {/* 2. timestamp (timestamptz) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', color: '#64748b' }}>
+                      {formatTimestamp(log.timestamp)}
+                    </td>
+
+                    {/* 3. user_id (varchar) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                      {log.user_id ? (
+                        <span style={{
+                          padding: '2px 6px', borderRadius: 4, background: '#f1f5f9',
+                          color: '#334155', fontWeight: 600, fontSize: '0.75rem'
+                        }}>
+                          {log.user_id}
+                        </span>
+                      ) : (
+                        <span className="cell-null">NULL</span>
+                      )}
+                    </td>
+
+                    {/* 4. username (varchar) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setUserFilter(log.username);
+                            searchParams.set('user', log.username);
+                            setSearchParams(searchParams);
+                          }}
+                          style={{
+                            background: 'none', border: 'none', padding: 0,
+                            fontWeight: 600, color: '#0f172a', cursor: 'pointer',
+                            textAlign: 'left'
+                          }}
+                          title={`Filter by @${log.username}`}
+                        >
+                          @{log.username}
+                        </button>
+                        {log.full_name && (
+                          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                            ({log.full_name})
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* 5. action (varchar) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                      <span style={{
+                        padding: '3px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700,
+                        fontFamily: 'var(--font-mono)', letterSpacing: '0.03em',
+                        background: actStyle.bg, color: actStyle.text, border: `1px solid ${actStyle.border}`,
+                      }}>
+                        {log.action}
+                      </span>
+                    </td>
+
+                    {/* 6. resource_type (varchar) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                      <span style={{
+                        padding: '2px 7px', borderRadius: 4, background: '#f8fafc',
+                        border: '1px solid #e2e8f0', color: '#475569', fontSize: '0.74rem'
+                      }}>
+                        {log.resource_type || '—'}
+                      </span>
+                    </td>
+
+                    {/* 7. resource_id (varchar) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                      {log.resource_id ? (
+                        <span style={{ color: '#0284c7', fontWeight: 600 }}>
+                          {log.resource_id}
+                        </span>
+                      ) : (
+                        <span className="cell-null">NULL</span>
+                      )}
+                    </td>
+
+                    {/* 8. description (text) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', minWidth: 200, maxWidth: 320 }}>
+                      <span title={log.description} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {log.description || '—'}
+                      </span>
+                    </td>
+
+                    {/* 9. result (varchar) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '2px 8px', borderRadius: 12,
+                        background: isSuccess ? '#f0fdf4' : '#fef2f2',
+                        color: isSuccess ? '#16a34a' : '#dc2626',
+                        border: `1px solid ${isSuccess ? '#bbf7d0' : '#fecaca'}`,
+                        fontSize: '0.72rem', fontWeight: 600
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: isSuccess ? '#16a34a' : '#dc2626' }} />
+                        {log.result || 'unknown'}
+                      </span>
+                    </td>
+
+                    {/* 10. ip_address (varchar) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', color: '#475569' }}>
+                      {log.ip_address || <span className="cell-null">NULL</span>}
+                    </td>
+
+                    {/* 11. user_agent (text) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', maxWidth: 160 }}>
+                      <span title={log.user_agent} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b' }}>
+                        {log.user_agent || <span className="cell-null">NULL</span>}
+                      </span>
+                    </td>
+
+                    {/* 12. metadata (jsonb) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                      {log.metadata && Object.keys(log.metadata).length > 0 ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveLogModal(log);
+                          }}
+                          style={{
+                            background: '#f1f5f9', border: '1px solid #cbd5e1',
+                            borderRadius: 4, padding: '2px 7px', fontSize: '0.72rem',
+                            color: '#334155', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4
+                          }}
+                          title="Inspect JSON metadata"
+                        >
+                          <Eye size={11} /> {`{ ${Object.keys(log.metadata).length} keys }`}
+                        </button>
+                      ) : (
+                        <span className="cell-null">&#123;&#125;</span>
+                      )}
+                    </td>
+
+                    {/* 13. data_hash (varchar) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span title={log.data_hash} style={{ color: '#475569', fontSize: '0.75rem' }}>
+                          {log.data_hash ? `${log.data_hash.substring(0, 10)}...${log.data_hash.substring(log.data_hash.length - 6)}` : <span className="cell-null">NULL</span>}
+                        </span>
+                        {log.data_hash && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyToClipboard(log.data_hash, `dh-${log.id}`);
+                            }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#94a3b8' }}
+                            title="Copy full data hash"
+                          >
+                            {copiedKey === `dh-${log.id}` ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* 14. previous_hash (varchar) */}
+                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        {log.previous_hash === 'GENESIS' ? (
+                          <span style={{
+                            padding: '2px 7px', borderRadius: 4, background: '#fef3c7',
+                            border: '1px solid #fde68a', color: '#b45309', fontWeight: 700, fontSize: '0.72rem'
+                          }}>
+                            GENESIS
+                          </span>
+                        ) : log.previous_hash ? (
+                          <>
+                            <span title={log.previous_hash} style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                              {`${log.previous_hash.substring(0, 8)}...`}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(log.previous_hash, `ph-${log.id}`);
+                              }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#94a3b8' }}
+                              title="Copy full previous hash"
+                            >
+                              {copiedKey === `ph-${log.id}` ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="cell-null">NULL</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {paginated.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={AUDIT_COLUMNS.length}
+                    style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}
+                  >
+                    {loading ? 'Loading audit records from database...' : 'No audit log entries match your current filters.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Pagination Footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, flexWrap: 'wrap', gap: 10 }}>
+        <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+          {filtered.length > 0
+            ? `${pageSize === -1 ? 1 : ((page - 1) * pageSize) + 1}–${pageSize === -1 ? filtered.length : Math.min(page * pageSize, filtered.length)} of ${filtered.length} rows`
+            : '0 rows'}
+        </span>
+
+        {pageSize !== -1 && totalPages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              disabled={page <= 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
+            >
+              <ChevronLeft size={14} />
+            </button>
+
+            {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+              let pNum: number;
+              if (totalPages <= 7) {
+                pNum = i + 1;
+              } else if (page <= 4) {
+                pNum = i + 1;
+              } else if (page >= totalPages - 3) {
+                pNum = totalPages - 6 + i;
+              } else {
+                pNum = page - 3 + i;
+              }
+
+              return (
+                <button
+                  key={pNum}
+                  onClick={() => setPage(pNum)}
+                  className={`btn btn-sm ${page === pNum ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ minWidth: 32, padding: '4px 8px' }}
+                >
+                  {pNum}
+                </button>
+              );
+            })}
+
+            <button
+              className="btn btn-secondary btn-sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Detailed Inspection Modal */}
+      {activeLogModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(3px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
+        }}>
+          <div style={{
+            background: '#ffffff', borderRadius: 12, width: '100%', maxWidth: 740,
+            maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+            border: '1px solid #e2e8f0'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px', borderBottom: '1px solid #e2e8f0',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: '#f8fafc'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <ShieldCheck size={18} color="#059669" />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                    Audit Record Details
+                  </h3>
+                  <span style={{ fontSize: '0.74rem', color: '#64748b', fontFamily: 'var(--font-mono)' }}>
+                    ID: {activeLogModal.id}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setActiveLogModal(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#64748b' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Content: All 14 fields */}
+            <div style={{ padding: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 18 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 3 }}>
+                    Timestamp (timestamptz)
+                  </label>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: '#0f172a' }}>
+                    {formatTimestamp(activeLogModal.timestamp)} ({activeLogModal.timestamp})
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 3 }}>
+                    Action & Result
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700,
+                      fontFamily: 'var(--font-mono)',
+                      background: (ACTION_STYLES[activeLogModal.action]?.bg || '#f1f5f9'),
+                      color: (ACTION_STYLES[activeLogModal.action]?.text || '#475569')
+                    }}>
+                      {activeLogModal.action}
+                    </span>
+                    <span style={{
+                      fontSize: '0.75rem', fontWeight: 600,
+                      color: activeLogModal.result === 'success' ? '#16a34a' : '#dc2626'
+                    }}>
+                      {activeLogModal.result}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 3 }}>
+                    User ID & Username
+                  </label>
+                  <div style={{ fontSize: '0.82rem', color: '#0f172a' }}>
+                    <strong>@{activeLogModal.username}</strong>
+                    {activeLogModal.full_name && ` (${activeLogModal.full_name})`}
+                    <span style={{ color: '#64748b', marginLeft: 6, fontFamily: 'var(--font-mono)' }}>
+                      [{activeLogModal.user_id || 'NULL'}]
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 3 }}>
+                    Resource Type & ID
+                  </label>
+                  <div style={{ fontSize: '0.82rem', color: '#0f172a' }}>
+                    <span style={{ padding: '2px 6px', background: '#f1f5f9', borderRadius: 4, marginRight: 6 }}>
+                      {activeLogModal.resource_type}
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-mono)', color: '#0284c7' }}>
+                      {activeLogModal.resource_id || 'NULL'}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 3 }}>
+                    IP Address (varchar)
+                  </label>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: '#0f172a' }}>
+                    {activeLogModal.ip_address || 'NULL'}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 3 }}>
+                    User Agent (text)
+                  </label>
+                  <div style={{ fontSize: '0.82rem', color: '#475569', wordBreak: 'break-all' }}>
+                    {activeLogModal.user_agent || 'NULL'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 }}>
+                  Description (text)
+                </label>
+                <div style={{ padding: '10px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.82rem', color: '#0f172a' }}>
+                  {activeLogModal.description || 'No description recorded.'}
+                </div>
+              </div>
+
+              {/* Metadata JSON */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                    Metadata (jsonb)
+                  </label>
+                  <button
+                    onClick={() => copyToClipboard(JSON.stringify(activeLogModal.metadata, null, 2), 'modal-meta')}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.72rem', color: '#2563eb', display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    {copiedKey === 'modal-meta' ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
+                    {copiedKey === 'modal-meta' ? 'Copied' : 'Copy JSON'}
+                  </button>
+                </div>
+                <pre style={{
+                  padding: '10px 12px', background: '#0f172a', color: '#38bdf8', borderRadius: 6,
+                  fontSize: '0.75rem', fontFamily: 'var(--font-mono)', overflowX: 'auto', margin: 0, maxHeight: 150
+                }}>
+                  {JSON.stringify(activeLogModal.metadata, null, 2)}
+                </pre>
+              </div>
+
+              {/* Cryptographic Hashes */}
+              <div style={{ padding: '12px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0f172a', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Hash size={13} color="#2563eb" /> Cryptographic Integrity Proofs
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block', fontWeight: 600 }}>
+                    DATA_HASH (SHA-256)
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    <code style={{ fontSize: '0.74rem', color: '#0f172a', background: '#e2e8f0', padding: '3px 6px', borderRadius: 4, flex: 1, wordBreak: 'break-all' }}>
+                      {activeLogModal.data_hash || 'NULL'}
+                    </code>
+                    {activeLogModal.data_hash && (
+                      <button
+                        onClick={() => copyToClipboard(activeLogModal.data_hash, 'modal-dh')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                      >
+                        {copiedKey === 'modal-dh' ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block', fontWeight: 600 }}>
+                    PREVIOUS_HASH (BLOCKCHAIN LINK)
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    <code style={{ fontSize: '0.74rem', color: '#0f172a', background: '#e2e8f0', padding: '3px 6px', borderRadius: 4, flex: 1, wordBreak: 'break-all' }}>
+                      {activeLogModal.previous_hash || 'NULL'}
+                    </code>
+                    {activeLogModal.previous_hash && activeLogModal.previous_hash !== 'GENESIS' && (
+                      <button
+                        onClick={() => copyToClipboard(activeLogModal.previous_hash, 'modal-ph')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                      >
+                        {copiedKey === 'modal-ph' ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', background: '#f8fafc' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setActiveLogModal(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
