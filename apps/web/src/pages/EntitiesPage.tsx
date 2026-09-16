@@ -1,52 +1,195 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Filter, Users, Phone, Truck, Building2, CreditCard, MapPin, AlertTriangle, CheckCircle, Flag } from 'lucide-react';
 import {
-  PERSONS, PHONES, VEHICLES, ORGANISATIONS, ACCOUNTS, LOCATIONS,
-  ENTITY_COUNTS, type AnyEntity,
+  Search, Users, Phone, Truck, Building2, CreditCard, MapPin,
+  Flag, RefreshCw, CheckCircle2, Database, AlertCircle
+} from 'lucide-react';
+import { useDatabases } from '../contexts/DatabaseContext';
+import {
+  PERSONS as FALLBACK_PERSONS,
+  PHONES as FALLBACK_PHONES,
+  VEHICLES as FALLBACK_VEHICLES,
+  ORGANISATIONS as FALLBACK_ORGS,
+  ACCOUNTS as FALLBACK_ACCOUNTS,
+  LOCATIONS as FALLBACK_LOCATIONS,
 } from '../data/dataset';
 
-const TYPE_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
-  Person:       { label: 'Persons',       color: '#2563eb', icon: Users },
-  Phone:        { label: 'Phones',        color: '#16a34a', icon: Phone },
-  Vehicle:      { label: 'Vehicles',      color: '#ea580c', icon: Truck },
-  Organization: { label: 'Organisations', color: '#7c3aed', icon: Building2 },
-  Account:      { label: 'Accounts',      color: '#ca8a04', icon: CreditCard },
-  Location:     { label: 'Locations',     color: '#dc2626', icon: MapPin },
+const TYPE_CONFIG: Record<string, { label: string; color: string; icon: any; tableKey: string }> = {
+  Person:       { label: 'Persons',       color: '#2563eb', icon: Users,      tableKey: 'persons' },
+  Phone:        { label: 'Phones',        color: '#16a34a', icon: Phone,      tableKey: 'cdr_records' },
+  Vehicle:      { label: 'Vehicles',      color: '#ea580c', icon: Truck,      tableKey: 'vehicles' },
+  Organization: { label: 'Organisations', color: '#7c3aed', icon: Building2,  tableKey: 'organisations' },
+  Account:      { label: 'Accounts',      color: '#ca8a04', icon: CreditCard, tableKey: 'bank_accounts' },
+  Location:     { label: 'Locations',     color: '#dc2626', icon: MapPin,     tableKey: 'locations' },
 };
 
-function getEntityLabel(e: AnyEntity): string {
-  if (e.nodeType === 'Person') return e.name;
-  if (e.nodeType === 'Phone') return e.number;
-  if (e.nodeType === 'Vehicle') return e.licensePlate;
-  if (e.nodeType === 'Organization') return e.name;
-  if (e.nodeType === 'Account') return e.accountNumber;
-  if (e.nodeType === 'Location') return e.name;
-  return e.id;
+// Precise column schemas matching the connected PostgreSQL database
+const KNOWN_COLUMNS: Record<string, { key: string; type: string; sortable?: boolean }[]> = {
+  Person: [
+    { key: 'id',           type: 'varchar(32)',  sortable: true },
+    { key: 'name',         type: 'varchar(200)', sortable: true },
+    { key: 'aliases',      type: 'varchar(100)', sortable: true },
+    { key: 'age',          type: 'int',          sortable: true },
+    { key: 'gender',       type: 'varchar(10)' },
+    { key: 'aadhaar_hash', type: 'varchar(20)' },
+    { key: 'pan',          type: 'varchar(10)' },
+    { key: 'occupation',   type: 'varchar(100)', sortable: true },
+    { key: 'cluster',      type: 'varchar(10)' },
+    { key: 'city',         type: 'varchar(100)', sortable: true },
+    { key: 'state',        type: 'varchar(100)', sortable: true },
+    { key: 'risk_score',   type: 'numeric',      sortable: true },
+    { key: 'status',       type: 'varchar(30)',  sortable: true },
+    { key: 'notes',        type: 'text' },
+  ],
+  Vehicle: [
+    { key: 'id',                 type: 'varchar(32)',  sortable: true },
+    { key: 'license_plate',      type: 'varchar(20)',  sortable: true },
+    { key: 'vehicle_type',       type: 'varchar(50)' },
+    { key: 'make',               type: 'varchar(50)' },
+    { key: 'model',              type: 'varchar(50)' },
+    { key: 'color',              type: 'varchar(30)' },
+    { key: 'year',               type: 'int',          sortable: true },
+    { key: 'registration_state', type: 'varchar(50)' },
+    { key: 'registered_owner',   type: 'varchar(200)', sortable: true },
+    { key: 'owner_id',           type: 'varchar(32)' },
+    { key: 'status',             type: 'varchar(20)' },
+    { key: 'flagged',            type: 'boolean' },
+    { key: 'flag_reason',        type: 'text' },
+  ],
+  Organization: [
+    { key: 'id',                 type: 'varchar(32)',  sortable: true },
+    { key: 'name',               type: 'varchar(300)', sortable: true },
+    { key: 'cin',                type: 'varchar(25)' },
+    { key: 'gstin',              type: 'varchar(20)' },
+    { key: 'pan',                type: 'varchar(10)' },
+    { key: 'director',           type: 'varchar(200)', sortable: true },
+    { key: 'city',               type: 'varchar(100)' },
+    { key: 'state',              type: 'varchar(100)' },
+    { key: 'registered_address', type: 'text' },
+    { key: 'status',             type: 'varchar(30)' },
+    { key: 'risk_score',         type: 'numeric',      sortable: true },
+    { key: 'flagged',            type: 'boolean' },
+  ],
+  Account: [
+    { key: 'id',                  type: 'varchar(32)',  sortable: true },
+    { key: 'account_number',      type: 'varchar(30)',  sortable: true },
+    { key: 'bank',                type: 'varchar(100)', sortable: true },
+    { key: 'branch',              type: 'varchar(100)' },
+    { key: 'ifsc',                type: 'varchar(15)' },
+    { key: 'account_type',        type: 'varchar(30)' },
+    { key: 'linked_person',       type: 'varchar(100)' },
+    { key: 'balance',             type: 'varchar(30)' },
+    { key: 'suspicious_activity', type: 'boolean' },
+  ],
+  Location: [
+    { key: 'id',            type: 'varchar(32)',  sortable: true },
+    { key: 'name',          type: 'varchar(200)', sortable: true },
+    { key: 'location_type', type: 'varchar(50)' },
+    { key: 'city',          type: 'varchar(100)' },
+    { key: 'state',         type: 'varchar(100)' },
+    { key: 'lat',           type: 'numeric' },
+    { key: 'lng',           type: 'numeric' },
+    { key: 'significance',  type: 'text' },
+  ],
+  Phone: [
+    { key: 'id',             type: 'varchar(32)',  sortable: true },
+    { key: 'caller_number',  type: 'varchar(20)',  sortable: true },
+    { key: 'callee_number',  type: 'varchar(20)',  sortable: true },
+    { key: 'caller_id',      type: 'varchar(32)' },
+    { key: 'callee_id',      type: 'varchar(32)' },
+    { key: 'duration',       type: 'int',          sortable: true },
+    { key: 'call_type',      type: 'varchar(20)' },
+    { key: 'timestamp',      type: 'varchar(30)' },
+    { key: 'tower_location', type: 'varchar(100)' },
+    { key: 'flagged',        type: 'boolean' },
+    { key: 'flag_reason',    type: 'text' },
+  ],
+};
+
+const MIXED_COLUMNS = [
+  { key: 'id',       type: 'varchar(32)',  sortable: true },
+  { key: 'nodeType', type: 'varchar(20)',  sortable: true },
+  { key: 'name',     type: 'varchar(200)', sortable: true },
+  { key: 'status',   type: 'varchar(30)' },
+  { key: 'city',     type: 'varchar(100)' },
+  { key: 'state',    type: 'varchar(100)' },
+];
+
+function getEntityLabel(e: any): string {
+  if (e.name) return e.name;
+  if (e.license_plate) return e.license_plate;
+  if (e.caller_number) return `${e.caller_number} → ${e.callee_number || ''}`;
+  if (e.account_number) return e.account_number;
+  return e.id || '';
 }
 
-function getEntitySub(e: AnyEntity): string {
-  if (e.nodeType === 'Person') return `${e.occupation || '—'} · ${e.city || '—'}, ${e.state || '—'}`;
-  if (e.nodeType === 'Phone') return `${e.operator || '—'} · ${e.circle || '—'} · ${e.callCount} calls`;
-  if (e.nodeType === 'Vehicle') return `${e.make} ${e.model} · ${e.color} · ${e.registrationState}`;
-  if (e.nodeType === 'Organization') return `${e.type || '—'} · ${e.city || '—'}`;
-  if (e.nodeType === 'Account') return `${e.bank || '—'} · ${e.accountType}`;
-  if (e.nodeType === 'Location') return `${e.city || '—'}, ${e.state || '—'}`;
-  return '';
-}
-
-function isFlagged(e: AnyEntity): boolean {
-  if (e.nodeType === 'Person') return (e.riskScore || 0) >= 0.6;
+function isFlagged(e: any): boolean {
+  if (e.nodeType === 'Person') {
+    return Number(e.risk_score || e.riskScore || 0) >= 0.6 ||
+      e.status === 'Prime Suspect' || e.status === 'Arrested' || e.status === 'Under Surveillance';
+  }
   if (e.nodeType === 'Vehicle') return !!e.flagged;
-  if (e.nodeType === 'Organization') return !!e.flagged;
-  if (e.nodeType === 'Account') return !!e.suspiciousActivity;
-  if (e.nodeType === 'Phone') return e.registeredOwner === 'UNREGISTERED';
+  if (e.nodeType === 'Organization') return !!e.flagged || Number(e.risk_score || 0) >= 0.7;
+  if (e.nodeType === 'Account') return !!e.suspicious_activity || !!e.suspiciousActivity;
+  if (e.nodeType === 'Phone') return !!e.flagged;
   return false;
 }
 
-function getRisk(e: AnyEntity): number {
-  if (e.nodeType === 'Person') return e.riskScore || 0;
-  return 0;
+function renderCell(val: any, colKey: string) {
+  if (val === null || val === undefined || val === '') return <span className="cell-null">NULL</span>;
+  if (typeof val === 'boolean') {
+    return val
+      ? <span style={{ color: '#dc2626', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#dc2626' }}></span>true</span>
+      : <span style={{ color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a' }}></span>false</span>;
+  }
+  if (colKey === 'risk_score' || colKey === 'riskScore' || colKey === 'centralityScore' || colKey === 'betweennessScore') {
+    const n = Number(val);
+    if (isNaN(n)) return <span className="cell-null">NULL</span>;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 52, height: 4, background: '#e2e8f0', borderRadius: 2, flexShrink: 0 }}>
+          <div style={{ width: `${Math.min(100, n * 100)}%`, height: '100%', borderRadius: 2, background: n > 0.7 ? '#dc2626' : n > 0.5 ? '#ea580c' : '#ca8a04' }} />
+        </div>
+        <span style={{ fontWeight: 600, color: n > 0.7 ? '#dc2626' : '#64748b' }}>{n.toFixed(2)}</span>
+      </div>
+    );
+  }
+  if (colKey === 'aliases') {
+    return (
+      <span style={{ color: '#2563eb', fontWeight: 500 }}>
+        {Array.isArray(val) ? val.join(', ') : String(val)}
+      </span>
+    );
+  }
+  if (colKey === 'status') {
+    const str = String(val);
+    const isCritical = str.includes('Prime Suspect') || str.includes('Arrested') || str.includes('Impounded') || str.includes('Suspended');
+    const isWarn = str.includes('Surveillance') || str.includes('Flagged') || str.includes('Interest') || str.includes('Investigation');
+    const color = isCritical ? '#dc2626' : isWarn ? '#ea580c' : '#16a34a';
+    const bg = isCritical ? '#fef2f2' : isWarn ? '#fff7ed' : '#f0fdf4';
+    return (
+      <span style={{
+        padding: '2px 8px',
+        borderRadius: 4,
+        fontSize: '0.75rem',
+        fontWeight: 500,
+        color,
+        background: bg,
+        border: `1px solid ${color}30`,
+        whiteSpace: 'nowrap'
+      }}>
+        {str}
+      </span>
+    );
+  }
+  if (Array.isArray(val)) return <span style={{ color: '#7c3aed' }}>[{val.length}]</span>;
+  if (typeof val === 'number') return <span style={{ color: '#0f172a' }}>{val.toLocaleString()}</span>;
+  const str = String(val);
+  return (
+    <span title={str} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 260 }}>
+      {str}
+    </span>
+  );
 }
 
 const PAGE_SIZE = 20;
@@ -58,80 +201,292 @@ export default function EntitiesPage() {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [page, setPage] = useState(1);
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // Live database connection state
+  const { activeDatabase, databases } = useDatabases();
+  const [liveData, setLiveData] = useState<Record<string, any[]> | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [dbStatus, setDbStatus] = useState<string>('Connecting to database...');
+
+  const fetchLiveData = useCallback(async () => {
+    setIsLoading(true);
+    const db = activeDatabase || databases[0];
+
+    try {
+      if (db?.type === 'mongodb') {
+        const uri = db.connectionUri || (db.host?.startsWith('mongodb') ? db.host : '');
+        const dbParam = db.databaseName ? `&db=${encodeURIComponent(db.databaseName)}` : '';
+        const res = await fetch(`/api/database/mongo-data?uri=${encodeURIComponent(uri)}${dbParam}&limit=2000`);
+        const json = await res.json();
+        if (json.success && json.data) {
+          setLiveData(json.data);
+          setDbStatus(`Live MongoDB Synced (${db.name || 'Atlas'})`);
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Relational / PostgreSQL
+      let uriParam = '';
+      if (db?.connectionUri) {
+        uriParam = `?uri=${encodeURIComponent(db.connectionUri)}`;
+      } else if (db?.host?.startsWith('postgres://') || db?.host?.startsWith('postgresql://')) {
+        uriParam = `?uri=${encodeURIComponent(db.host)}`;
+      }
+
+      const separator = uriParam ? '&' : '?';
+      const res = await fetch(`/api/database/live-data${uriParam}${separator}limit=2000`);
+      const json = await res.json();
+
+      if (json.success && json.data) {
+        setLiveData(json.data);
+        setDbStatus('Live Database Synced');
+      } else {
+        setDbStatus('Using cached dataset');
+      }
+    } catch {
+      setDbStatus('Offline fallback dataset');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeDatabase, databases]);
+
+  useEffect(() => {
+    fetchLiveData();
+  }, [fetchLiveData]);
 
   useEffect(() => {
     const urlSearch = searchParams.get('search');
-    if (urlSearch !== null && urlSearch !== search) {
-      setSearch(urlSearch);
-    }
+    if (urlSearch !== null && urlSearch !== search) setSearch(urlSearch);
   }, [searchParams]);
 
-  const allEntities: AnyEntity[] = useMemo(() => [
-    ...PERSONS, ...PHONES, ...VEHICLES, ...ORGANISATIONS, ...ACCOUNTS, ...LOCATIONS,
-  ], []);
+  // Aggregate entities by type from live database tables
+  const { entitiesByType, allEntities, counts } = useMemo(() => {
+    if (!liveData) {
+      // Fallback to static dataset if database is unreachable
+      const p = FALLBACK_PERSONS.map(x => ({ ...x, nodeType: 'Person', aliases: (x as any).alias || '' }));
+      const ph = FALLBACK_PHONES.map(x => ({ ...x, nodeType: 'Phone' }));
+      const v = FALLBACK_VEHICLES.map(x => ({ ...x, nodeType: 'Vehicle' }));
+      const o = FALLBACK_ORGS.map(x => ({ ...x, nodeType: 'Organization' }));
+      const a = FALLBACK_ACCOUNTS.map(x => ({ ...x, nodeType: 'Account' }));
+      const l = FALLBACK_LOCATIONS.map(x => ({ ...x, nodeType: 'Location' }));
+      return {
+        entitiesByType: { Person: p, Phone: ph, Vehicle: v, Organization: o, Account: a, Location: l },
+        allEntities: [...p, ...ph, ...v, ...o, ...a, ...l],
+        counts: {
+          Person: p.length,
+          Phone: ph.length,
+          Vehicle: v.length,
+          Organization: o.length,
+          Account: a.length,
+          Location: l.length,
+        }
+      };
+    }
 
+    const rawPersons = (liveData['persons'] || liveData['person'] || [])
+      .map(r => ({ ...r, nodeType: 'Person' }));
+    const rawVehicles = (liveData['vehicles'] || liveData['vehicle'] || [])
+      .map(r => ({ ...r, nodeType: 'Vehicle' }));
+    const rawOrgs = (liveData['organisations'] || liveData['organizations'] || liveData['organisation'] || [])
+      .map(r => ({ ...r, nodeType: 'Organization' }));
+    const rawAccounts = (liveData['bank_accounts'] || liveData['accounts'] || liveData['account'] || [])
+      .map(r => ({ ...r, nodeType: 'Account' }));
+    const rawLocations = (liveData['locations'] || liveData['location'] || [])
+      .map(r => ({ ...r, nodeType: 'Location' }));
+    const rawPhones = (liveData['cdr_records'] || liveData['phones'] || liveData['phone'] || [])
+      .map(r => ({ ...r, nodeType: 'Phone' }));
+
+    const byType: Record<string, any[]> = {
+      Person: rawPersons,
+      Phone: rawPhones,
+      Vehicle: rawVehicles,
+      Organization: rawOrgs,
+      Account: rawAccounts,
+      Location: rawLocations,
+    };
+
+    const combined = [
+      ...rawPersons,
+      ...rawPhones,
+      ...rawVehicles,
+      ...rawOrgs,
+      ...rawAccounts,
+      ...rawLocations,
+    ];
+
+    return {
+      entitiesByType: byType,
+      allEntities: combined,
+      counts: {
+        Person: rawPersons.length,
+        Phone: rawPhones.length,
+        Vehicle: rawVehicles.length,
+        Organization: rawOrgs.length,
+        Account: rawAccounts.length,
+        Location: rawLocations.length,
+      }
+    };
+  }, [liveData]);
+
+  // Determine active columns (base schema + any extra keys found in the database records)
+  const resolvedType = typeFilter
+    ? typeFilter.charAt(0).toUpperCase() + typeFilter.slice(1)
+    : '';
+
+  const activeCols = useMemo(() => {
+    if (!resolvedType || !KNOWN_COLUMNS[resolvedType]) {
+      return MIXED_COLUMNS;
+    }
+
+    const baseCols = KNOWN_COLUMNS[resolvedType];
+    const records = entitiesByType[resolvedType] || [];
+    if (records.length === 0) return baseCols;
+
+    const baseKeySet = new Set(baseCols.map(c => c.key));
+    const extraCols: { key: string; type: string; sortable?: boolean }[] = [];
+
+    // Dynamically discover any additional fields in the database row
+    const seen = new Set<string>();
+    for (const rec of records) {
+      for (const k of Object.keys(rec)) {
+        if (k === 'nodeType' || baseKeySet.has(k) || seen.has(k)) continue;
+        seen.add(k);
+        const val = rec[k];
+        const inferredType = typeof val === 'number' ? 'int' : typeof val === 'boolean' ? 'boolean' : 'varchar(100)';
+        extraCols.push({ key: k, type: inferredType, sortable: true });
+      }
+    }
+
+    return [...baseCols, ...extraCols];
+  }, [resolvedType, entitiesByType]);
+
+  // Filter entities
   const filtered = useMemo(() => {
-    return allEntities.filter(e => {
-      if (typeFilter && e.nodeType.toLowerCase() !== typeFilter.toLowerCase()) return false;
+    const list = resolvedType ? (entitiesByType[resolvedType] || []) : allEntities;
+    let result = list.filter(e => {
       if (flaggedOnly && !isFlagged(e)) return false;
       if (search) {
         const q = search.toLowerCase();
-        const label = getEntityLabel(e).toLowerCase();
-        const sub = getEntitySub(e).toLowerCase();
-        if (!label.includes(q) && !sub.includes(q) && !e.id.toLowerCase().includes(q)) return false;
+        return Object.values(e).some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q));
       }
       return true;
     });
-  }, [allEntities, typeFilter, flaggedOnly, search]);
+
+    if (sortField) {
+      result = [...result].sort((a, b) => {
+        const va = (a as any)[sortField];
+        const vb = (b as any)[sortField];
+        if (va === vb) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        const cmp = typeof va === 'number' && typeof vb === 'number'
+          ? va - vb
+          : String(va).localeCompare(String(vb));
+        return sortOrder === 'asc' ? cmp : -cmp;
+      });
+    }
+    return result;
+  }, [resolvedType, entitiesByType, allEntities, flaggedOnly, search, sortField, sortOrder]);
 
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
   const handleTypeFilter = (t: string) => {
-    const nextParams = new URLSearchParams(searchParams);
+    const next = new URLSearchParams(searchParams);
     if (!t || t.toLowerCase() === typeFilter.toLowerCase()) {
-      nextParams.delete('type');
+      next.delete('type');
     } else {
-      nextParams.set('type', t);
+      next.set('type', t);
     }
-    setSearchParams(nextParams);
+    setSearchParams(next);
+    setPage(1);
+    setSortField(null);
+  };
+
+  const handleSort = (key: string) => {
+    if (sortField === key) {
+      setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(key);
+      setSortOrder('asc');
+    }
     setPage(1);
   };
-  const handleSearch = (v: string) => { setSearch(v); setPage(1); };
+
+  const totalEntitiesCount = Object.values(counts).reduce((a, b) => a + b, 0);
 
   return (
     <div className="fade-in">
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: 4 }}>Entity Registry</h1>
-          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-            {ENTITY_COUNTS.totalEntities} entities across {Object.keys(TYPE_CONFIG).length} types · {ENTITY_COUNTS.totalRelationships} relationships mapped
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h1 style={{ fontSize: '1.5rem', marginBottom: 2, fontWeight: 700 }}>Entity Registry</h1>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: '0.75rem',
+              padding: '2px 8px',
+              borderRadius: 12,
+              background: '#ecfdf5',
+              color: '#047857',
+              border: '1px solid #a7f3d0',
+              fontWeight: 500
+            }}>
+              <CheckCircle2 size={12} />
+              {dbStatus}
+            </span>
+          </div>
+          <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
+            {totalEntitiesCount} entities verified from live database across {Object.keys(TYPE_CONFIG).length} schemas
           </p>
         </div>
+
+        <button
+          onClick={fetchLiveData}
+          className="btn btn-secondary btn-sm"
+          style={{ gap: 6, display: 'flex', alignItems: 'center' }}
+          title="Refresh entities from live database"
+          disabled={isLoading}
+        >
+          <RefreshCw size={13} className={isLoading ? 'spin' : ''} />
+          <span>Sync Database</span>
+        </button>
       </div>
 
-      {/* Stats row */}
+      {/* Type cards with exact counts */}
       <div className="grid-4" style={{ marginBottom: 20, gridTemplateColumns: 'repeat(6, 1fr)' }}>
         {Object.entries(TYPE_CONFIG).map(([type, cfg]) => {
           const Icon = cfg.icon;
-          const count = {
-            Person: ENTITY_COUNTS.persons, Phone: ENTITY_COUNTS.phones,
-            Vehicle: ENTITY_COUNTS.vehicles, Organization: ENTITY_COUNTS.organisations,
-            Account: ENTITY_COUNTS.accounts, Location: ENTITY_COUNTS.locations,
-          }[type] || 0;
+          const count = counts[type as keyof typeof counts] || 0;
+          const isSelected = typeFilter.toLowerCase() === type.toLowerCase();
           return (
             <div
               key={type}
               onClick={() => handleTypeFilter(type)}
               className="stat-card"
-              style={{ cursor: 'pointer', borderTop: typeFilter === type ? `3px solid ${cfg.color}` : '3px solid transparent' }}
+              style={{
+                cursor: 'pointer',
+                borderTop: isSelected ? `3px solid ${cfg.color}` : '3px solid transparent',
+                background: isSelected ? '#f8fafc' : '#ffffff',
+              }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 7, background: `${cfg.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 7,
+                  background: `${cfg.color}15`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
                   <Icon size={14} style={{ color: cfg.color }} />
                 </div>
-                <span className="stat-label">{cfg.label}</span>
+                <span className="stat-label" style={{ fontWeight: isSelected ? 600 : 500 }}>{cfg.label}</span>
               </div>
               <div className="stat-value" style={{ fontSize: '1.6rem', color: cfg.color }}>{count}</div>
             </div>
@@ -139,13 +494,17 @@ export default function EntitiesPage() {
         })}
       </div>
 
-      {/* Filters */}
+      {/* Filter and search bar */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <div className="search-input-wrapper" style={{ flex: 1, minWidth: 280 }}>
           <Search size={15} className="search-icon" />
-          <input className="form-input" placeholder="Search by name, number, plate, city, bank..." value={search} onChange={e => handleSearch(e.target.value)} />
+          <input
+            className="form-input"
+            placeholder="Search across all fields..."
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+          />
         </div>
-
         <button
           onClick={() => { setFlaggedOnly(v => !v); setPage(1); }}
           className={`btn ${flaggedOnly ? 'btn-danger' : 'btn-secondary'}`}
@@ -154,162 +513,187 @@ export default function EntitiesPage() {
           <Flag size={14} />
           {flaggedOnly ? 'Flagged Only' : 'Show All'}
         </button>
-
         {typeFilter && (
           <button className="btn btn-secondary btn-sm" onClick={() => handleTypeFilter('')}>
             Clear Filter ✕
           </button>
         )}
-
-        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{filtered.length} results</span>
+        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+          {filtered.length} {filtered.length === 1 ? 'row' : 'rows'}
+        </span>
       </div>
 
-      {/* Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th className="sortable">
-                <span className="col-name">id</span>
-                <span className="col-type">varchar(32)</span>
-                <span className="sort-icon">⇅</span>
-              </th>
-              <th className="sortable">
-                <span className="col-name">type</span>
-                <span className="col-type">varchar(20)</span>
-                <span className="sort-icon">⇅</span>
-              </th>
-              <th className="sortable">
-                <span className="col-name">name</span>
-                <span className="col-type">varchar(200)</span>
-                <span className="sort-icon">⇅</span>
-              </th>
-              <th>
-                <span className="col-name">details</span>
-                <span className="col-type">text</span>
-              </th>
-              <th>
-                <span className="col-name">community</span>
-                <span className="col-type">varchar(4)</span>
-              </th>
-              <th className="sortable">
-                <span className="col-name">risk_score</span>
-                <span className="col-type">numeric</span>
-                <span className="sort-icon">⇅</span>
-              </th>
-              <th>
-                <span className="col-name">status</span>
-                <span className="col-type">varchar(10)</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginated.map(e => {
-              const cfg = TYPE_CONFIG[e.nodeType];
-              const Icon = cfg?.icon || Users;
-              const flagged = isFlagged(e);
-              const risk = getRisk(e);
-              return (
+      {/* Table Card with horizontal and vertical grid lines */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+        <div style={{ overflowX: 'auto', maxHeight: 650 }}>
+          <table className="data-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                {activeCols.map(col => (
+                  <th
+                    key={col.key}
+                    className={[col.sortable ? 'sortable' : '', sortField === col.key ? 'sorted' : ''].join(' ')}
+                    onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                    style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                  >
+                    <span className="col-name">{col.key}</span>
+                    <span className="col-type">{col.type}</span>
+                    {col.sortable && (
+                      <span className="sort-icon">
+                        {sortField === col.key ? (sortOrder === 'asc' ? '↑' : '↓') : '⇅'}
+                      </span>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {paginated.map(e => (
                 <tr
                   key={e.id}
                   style={{ cursor: 'pointer' }}
                   onClick={() => navigate(`/entities/${e.nodeType}/${e.id}`)}
                 >
-                  <td style={{ color: '#2563eb', maxWidth: 120 }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                      {e.id}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <div style={{ width: 18, height: 18, borderRadius: 4, background: `${cfg?.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Icon size={10} style={{ color: cfg?.color }} />
-                      </div>
-                      {e.nodeType}
-                    </div>
-                  </td>
-                  <td style={{ maxWidth: 200 }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', fontWeight: 500 }}>
-                      {getEntityLabel(e)}
-                    </span>
-                    {e.nodeType === 'Person' && (e as any).alias && (
-                      <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>alias: {(e as any).alias}</span>
-                    )}
-                  </td>
-                  <td style={{ maxWidth: 240, color: '#475569' }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                      {getEntitySub(e)}
-                    </span>
-                  </td>
-                  <td>
-                    {e.nodeType === 'Person' && (e as any).communityId
-                      ? <span style={{
-                          color: { C1: '#1d4ed8', C2: '#6d28d9', C3: '#15803d' }[(e as any).communityId as string] || '#475569',
-                        }}>{(e as any).communityId}</span>
-                      : <span className="cell-null">NULL</span>
+                  {activeCols.map(col => {
+                    const val = col.key === 'nodeType' ? e.nodeType : (e as any)[col.key];
+
+                    if (col.key === 'id') {
+                      return (
+                        <td key={col.key} style={{ color: '#2563eb', fontWeight: 600, borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 120 }}>
+                            {val}
+                          </span>
+                        </td>
+                      );
                     }
-                  </td>
-                  <td>
-                    {risk > 0 ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ width: 52, height: 3, background: '#e2e8f0', borderRadius: 2, flexShrink: 0 }}>
-                          <div style={{ width: `${risk * 100}%`, height: '100%', borderRadius: 2, background: risk > 0.7 ? '#dc2626' : risk > 0.5 ? '#ea580c' : '#ca8a04' }} />
-                        </div>
-                        <span style={{ color: risk > 0.7 ? '#dc2626' : '#64748b' }}>
-                          {(risk).toFixed(2)}
-                        </span>
-                      </div>
-                    ) : <span className="cell-null">NULL</span>}
-                  </td>
-                  <td>
-                    {flagged
-                      ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#b91c1c' }}><AlertTriangle size={11} /> flagged</span>
-                      : <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#15803d' }}><CheckCircle size={11} /> clear</span>
+
+                    if (col.key === 'nodeType') {
+                      const cfg = TYPE_CONFIG[e.nodeType];
+                      const Icon = cfg?.icon || Users;
+                      return (
+                        <td key={col.key} style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <div style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: 3,
+                              background: `${cfg?.color || '#64748b'}18`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0
+                            }}>
+                              <Icon size={9} style={{ color: cfg?.color || '#64748b' }} />
+                            </div>
+                            <span>{e.nodeType}</span>
+                          </div>
+                        </td>
+                      );
                     }
+
+                    if (col.key === 'name' && !typeFilter) {
+                      return (
+                        <td key={col.key} style={{ fontWeight: 500, borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 200 }}>
+                            {getEntityLabel(e)}
+                          </span>
+                        </td>
+                      );
+                    }
+
+                    return (
+                      <td key={col.key} style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                        {renderCell(val, col.key)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+
+              {paginated.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={activeCols.length}
+                    style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}
+                  >
+                    {isLoading ? 'Loading entities from database...' : 'No entities match the current filters.'}
                   </td>
                 </tr>
-              );
-            })}
-            {paginated.length === 0 && (
-              <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-                  No entities match the current filters.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Pagination */}
+      {/* Pagination Footer */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
         <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-          {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} rows
+          {filtered.length > 0 ? ((page - 1) * PAGE_SIZE) + 1 : 0}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} rows
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <button
             disabled={page <= 1}
             onClick={() => setPage(1)}
-            style={{ padding: '4px 8px', fontSize: '0.78rem', background: 'none', border: '1px solid #e2e8f0', borderRadius: 5, cursor: page <= 1 ? 'not-allowed' : 'pointer', color: page <= 1 ? '#cbd5e1' : '#475569' }}
-          >«</button>
+            style={{
+              padding: '4px 8px',
+              fontSize: '0.78rem',
+              background: 'none',
+              border: '1px solid #e2e8f0',
+              borderRadius: 5,
+              cursor: page <= 1 ? 'not-allowed' : 'pointer',
+              color: page <= 1 ? '#cbd5e1' : '#475569'
+            }}
+          >
+            «
+          </button>
           <button
             disabled={page <= 1}
             onClick={() => setPage(p => p - 1)}
-            style={{ padding: '4px 10px', fontSize: '0.78rem', background: 'none', border: '1px solid #e2e8f0', borderRadius: 5, cursor: page <= 1 ? 'not-allowed' : 'pointer', color: page <= 1 ? '#cbd5e1' : '#475569' }}
-          >Prev</button>
+            style={{
+              padding: '4px 10px',
+              fontSize: '0.78rem',
+              background: 'none',
+              border: '1px solid #e2e8f0',
+              borderRadius: 5,
+              cursor: page <= 1 ? 'not-allowed' : 'pointer',
+              color: page <= 1 ? '#cbd5e1' : '#475569'
+            }}
+          >
+            Prev
+          </button>
           <span style={{ fontSize: '0.78rem', color: '#64748b', padding: '0 6px', fontFamily: 'var(--font-mono)' }}>
             {page} / {totalPages}
           </span>
           <button
             disabled={page >= totalPages}
             onClick={() => setPage(p => p + 1)}
-            style={{ padding: '4px 10px', fontSize: '0.78rem', background: 'none', border: '1px solid #e2e8f0', borderRadius: 5, cursor: page >= totalPages ? 'not-allowed' : 'pointer', color: page >= totalPages ? '#cbd5e1' : '#475569' }}
-          >Next</button>
+            style={{
+              padding: '4px 10px',
+              fontSize: '0.78rem',
+              background: 'none',
+              border: '1px solid #e2e8f0',
+              borderRadius: 5,
+              cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+              color: page >= totalPages ? '#cbd5e1' : '#475569'
+            }}
+          >
+            Next
+          </button>
           <button
             disabled={page >= totalPages}
             onClick={() => setPage(totalPages)}
-            style={{ padding: '4px 8px', fontSize: '0.78rem', background: 'none', border: '1px solid #e2e8f0', borderRadius: 5, cursor: page >= totalPages ? 'not-allowed' : 'pointer', color: page >= totalPages ? '#cbd5e1' : '#475569' }}
-          >»</button>
+            style={{
+              padding: '4px 8px',
+              fontSize: '0.78rem',
+              background: 'none',
+              border: '1px solid #e2e8f0',
+              borderRadius: 5,
+              cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+              color: page >= totalPages ? '#cbd5e1' : '#475569'
+            }}
+          >
+            »
+          </button>
         </div>
       </div>
     </div>

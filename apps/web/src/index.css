@@ -603,7 +603,7 @@ pre {
 }
 
 .data-table th:last-child {
-  border-right: none;
+  border-right: 1px solid #e2e8f0;
 }
 
 /* Column name part — slightly bolder */
@@ -658,7 +658,7 @@ pre {
 }
 
 .data-table td:last-child {
-  border-right: none;
+  border-right: 1px solid #e2e8f0;
 }
 
 /* Muted/null cells */

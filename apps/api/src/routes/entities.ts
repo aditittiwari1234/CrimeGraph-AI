@@ -6,7 +6,49 @@ import { logger } from '../utils/logger';
 const router = Router();
 router.use(authenticate);
 
+// GET /api/entities?type=Person&page=1&limit=20&sort=name&order=asc
+router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { type, page = '1', limit = '20', sort, order = 'asc' } = req.query;
+  const pageNum   = Math.max(1, parseInt(String(page)));
+  const limitNum  = Math.min(500, Math.max(1, parseInt(String(limit))));
+  const skip      = (pageNum - 1) * limitNum;
+  const validTypes = ['Person', 'Phone', 'Vehicle', 'Organization', 'Location', 'Account', 'Case', 'Event'];
+
+  try {
+    const typeFilter = type && validTypes.includes(String(type))
+      ? `(n:${String(type)})`
+      : '(n)  WHERE (n:Person OR n:Phone OR n:Vehicle OR n:Organization OR n:Location OR n:Account OR n:Case OR n:Event)';
+
+    // Total count
+    const countCypher = `MATCH ${typeFilter} RETURN count(n) as total`;
+    const countResult = await runCypherQuery(countCypher, {});
+    const total = countResult.records[0]?.get('total')?.toNumber?.() ?? 0;
+
+    // Sorted fetch
+    const sortProp = sort ? `n.${String(sort)}` : 'n.id';
+    const orderDir = String(order).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+    const dataCypher = `
+      MATCH ${typeFilter}
+      RETURN n, labels(n) as types
+      ORDER BY ${sortProp} ${orderDir}
+      SKIP $skip LIMIT $limit
+    `;
+    const result = await runCypherQuery(dataCypher, { skip, limit: limitNum });
+
+    const entities = result.records.map(r => ({
+      ...r.get('n').properties,
+      nodeType: r.get('types')[0],
+    }));
+
+    res.json({ entities, total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) });
+  } catch (error) {
+    logger.error('List entities error:', error);
+    res.status(500).json({ error: 'Failed to list entities' });
+  }
+});
+
 // GET /api/entities/search?q=&type=&limit=
+
 router.get('/search', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { q = '', type, limit = 20 } = req.query;
   const searchTerm = String(q).toLowerCase();
@@ -196,6 +238,8 @@ router.get('/:type/:id/timeline', async (req: AuthenticatedRequest, res: Respons
     logger.error('Get entity timeline error:', error);
     res.status(500).json({ error: 'Failed to fetch timeline' });
   }
+});
+
 // GET /api/entities/:type/:id/access — get entity clearance and access governance
 router.get('/:type/:id/access', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { type, id } = req.params;
