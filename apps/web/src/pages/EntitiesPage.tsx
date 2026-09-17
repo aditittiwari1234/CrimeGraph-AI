@@ -3,9 +3,11 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Users, Phone, Truck, Building2, CreditCard, MapPin,
-  Flag, RefreshCw, CheckCircle2, Database, AlertCircle
+  Flag, RefreshCw, CheckCircle2, Database, AlertCircle,
+  ExternalLink, Network, Copy, Check, Filter, Info, Share2
 } from 'lucide-react';
 import { useDatabases } from '../contexts/DatabaseContext';
+import TableContextMenu, { type ContextMenuItem } from '../components/common/TableContextMenu';
 
 // Fast in-memory and session cache for verified live database entities
 let memoryEntitiesCache: Record<string, any[]> | null = null;
@@ -242,6 +244,144 @@ export default function EntitiesPage() {
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // Right-click context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    entity: any;
+    colKey: string;
+    colValue: any;
+  } | null>(null);
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(m => (m === msg ? null : m));
+    }, 2200);
+  };
+
+  const handleCellContextMenu = (
+    e: React.MouseEvent,
+    entity: any,
+    colKey: string,
+    colValue: any
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      entity,
+      colKey,
+      colValue,
+    });
+  };
+
+  const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
+    if (!contextMenu) return [];
+    const { entity, colKey, colValue } = contextMenu;
+    const items: ContextMenuItem[] = [];
+
+    items.push({
+      label: 'View Entity Dossier',
+      sublabel: `Open full details for ${entity.id}`,
+      icon: Info,
+      iconColor: '#2563eb',
+      onClick: () => navigate(`/entities/${entity.nodeType}/${entity.id}`),
+    });
+
+    items.push({
+      label: 'Open in Network Graph',
+      sublabel: 'Inspect 2-degree connections & network topology',
+      icon: Network,
+      iconColor: '#7c3aed',
+      onClick: () =>
+        navigate(
+          `/network?entityType=${encodeURIComponent(entity.nodeType)}&entityId=${encodeURIComponent(
+            entity.id
+          )}`
+        ),
+    });
+
+    items.push({
+      label: 'Open in New Tab',
+      icon: ExternalLink,
+      onClick: () => window.open(`/entities/${entity.nodeType}/${entity.id}`, '_blank'),
+      dividerAfter: true,
+    });
+
+    if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
+      const displayVal = String(colValue);
+      const truncated = displayVal.length > 25 ? displayVal.slice(0, 25) + '...' : displayVal;
+      items.push({
+        label: `Copy ${formatHeader(colKey)}`,
+        sublabel: `"${truncated}"`,
+        icon: Copy,
+        iconColor: '#059669',
+        onClick: () => {
+          navigator.clipboard.writeText(displayVal);
+          showToast(`Copied ${formatHeader(colKey)} to clipboard!`);
+        },
+      });
+    }
+
+    items.push({
+      label: 'Copy Entity ID',
+      sublabel: entity.id,
+      icon: Copy,
+      onClick: () => {
+        navigator.clipboard.writeText(entity.id);
+        showToast(`Copied ID (${entity.id}) to clipboard!`);
+      },
+    });
+
+    items.push({
+      label: 'Copy Entire Row as JSON',
+      icon: Share2,
+      onClick: () => {
+        navigator.clipboard.writeText(JSON.stringify(entity, null, 2));
+        showToast('Entire record copied to clipboard as JSON!');
+      },
+      dividerAfter: true,
+    });
+
+    if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
+      items.push({
+        label: `Filter Table by "${formatHeader(colKey)}"`,
+        sublabel: `Show rows matching: ${String(colValue).slice(0, 20)}`,
+        icon: Filter,
+        iconColor: '#ca8a04',
+        onClick: () => {
+          setSearch(String(colValue));
+          setPage(1);
+          showToast(`Filtered by ${formatHeader(colKey)}: "${String(colValue)}"`);
+        },
+      });
+    }
+
+    const flagged = isFlagged(entity);
+    items.push({
+      label: flagged ? 'Remove Priority Flag' : 'Flag as Priority Target',
+      sublabel: flagged ? 'Remove from high-risk watch list' : 'Mark for priority surveillance review',
+      icon: Flag,
+      iconColor: flagged ? '#94a3b8' : '#dc2626',
+      danger: !flagged,
+      onClick: () => {
+        const nextFlagged = !flagged;
+        entity.flagged = nextFlagged;
+        entity.status = nextFlagged ? 'Flagged' : 'Active';
+        setLiveData(prev => (prev ? { ...prev } : prev));
+        showToast(
+          nextFlagged ? `Flagged ${entity.id} as priority target!` : `Removed flag from ${entity.id}.`
+        );
+      },
+    });
+
+    return items;
+  }, [contextMenu, navigate]);
 
   // Horizontal scroll sync refs & logic for always-visible bottom scrollbar
   const tableRef = useRef<HTMLDivElement>(null);
@@ -737,16 +877,37 @@ export default function EntitiesPage() {
               {paginated.map(e => (
                 <tr
                   key={e.id}
-                  style={{ cursor: 'pointer' }}
+                  style={{
+                    cursor: 'pointer',
+                    background: contextMenu?.entity?.id === e.id ? '#eff6ff' : undefined,
+                  }}
                   onClick={() => navigate(`/entities/${e.nodeType}/${e.id}`)}
+                  onContextMenu={ev => handleCellContextMenu(ev, e, 'id', e.id)}
                 >
                   {activeCols.map(col => {
                     const val = col.key === 'nodeType' ? e.nodeType : (e as any)[col.key];
 
                     if (col.key === 'id') {
                       return (
-                        <td key={col.key} style={{ color: '#2563eb', fontWeight: 600, borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 120 }}>
+                        <td
+                          key={col.key}
+                          onContextMenu={ev => handleCellContextMenu(ev, e, col.key, val)}
+                          style={{
+                            color: '#2563eb',
+                            fontWeight: 600,
+                            borderRight: '1px solid #e2e8f0',
+                            borderBottom: '1px solid #e2e8f0',
+                          }}
+                        >
+                          <span
+                            style={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              display: 'block',
+                              maxWidth: 120,
+                            }}
+                          >
                             {val}
                           </span>
                         </td>
@@ -757,18 +918,24 @@ export default function EntitiesPage() {
                       const cfg = TYPE_CONFIG[e.nodeType];
                       const Icon = cfg?.icon || Users;
                       return (
-                        <td key={col.key} style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                        <td
+                          key={col.key}
+                          onContextMenu={ev => handleCellContextMenu(ev, e, col.key, val)}
+                          style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                        >
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <div style={{
-                              width: 16,
-                              height: 16,
-                              borderRadius: 3,
-                              background: `${cfg?.color || '#64748b'}18`,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0
-                            }}>
+                            <div
+                              style={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: 3,
+                                background: `${cfg?.color || '#64748b'}18`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
                               <Icon size={9} style={{ color: cfg?.color || '#64748b' }} />
                             </div>
                             <span>{e.nodeType}</span>
@@ -779,8 +946,20 @@ export default function EntitiesPage() {
 
                     if (col.key === 'name' && !typeFilter) {
                       return (
-                        <td key={col.key} style={{ fontWeight: 500, borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 200 }}>
+                        <td
+                          key={col.key}
+                          onContextMenu={ev => handleCellContextMenu(ev, e, col.key, val)}
+                          style={{ fontWeight: 500, borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                        >
+                          <span
+                            style={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              display: 'block',
+                              maxWidth: 200,
+                            }}
+                          >
                             {getEntityLabel(e)}
                           </span>
                         </td>
@@ -788,7 +967,11 @@ export default function EntitiesPage() {
                     }
 
                     return (
-                      <td key={col.key} style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      <td
+                        key={col.key}
+                        onContextMenu={ev => handleCellContextMenu(ev, e, col.key, val)}
+                        style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                      >
                         {renderCell(val, col.key)}
                       </td>
                     );
@@ -845,6 +1028,52 @@ export default function EntitiesPage() {
         </div>,
         document.body
       )}
+
+      {/* Table Right-Click Context Menu */}
+      {contextMenu && (
+        <TableContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          title={getEntityLabel(contextMenu.entity)}
+          subtitle={`${contextMenu.entity.nodeType} ID: ${contextMenu.entity.id}`}
+          badge={{
+            label: contextMenu.entity.nodeType,
+            color: TYPE_CONFIG[contextMenu.entity.nodeType]?.color || '#2563eb',
+            bg: `${TYPE_CONFIG[contextMenu.entity.nodeType]?.color || '#2563eb'}18`,
+          }}
+          items={contextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Copy / Action Toast Notification */}
+      {toastMessage &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              bottom: 30,
+              right: 30,
+              zIndex: 100000,
+              background: '#1e293b',
+              color: '#ffffff',
+              padding: '9px 16px',
+              borderRadius: 8,
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25) !important',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              pointerEvents: 'none',
+              animation: 'contextMenuFadeIn 0.15s ease',
+            }}
+          >
+            <Check size={14} style={{ color: '#22c55e' }} />
+            <span>{toastMessage}</span>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

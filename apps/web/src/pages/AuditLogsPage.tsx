@@ -3,9 +3,11 @@ import { createPortal } from 'react-dom';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, RefreshCw, ShieldCheck, Copy, Check, Eye, X,
-  ChevronLeft, ChevronRight, Filter, Database, Hash, User
+  ChevronLeft, ChevronRight, Filter, Database, Hash, User,
+  ExternalLink, Share2, Info, UserCheck, Shield
 } from 'lucide-react';
 import api from '../lib/api';
+import TableContextMenu, { type ContextMenuItem } from '../components/common/TableContextMenu';
 
 interface AuditLog {
   id: string;
@@ -124,6 +126,130 @@ export default function AuditLogsPage() {
 
   const [activeLogModal, setActiveLogModal] = useState<AuditLog | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Right-click context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    log: AuditLog;
+    colKey: string;
+    colValue: any;
+  } | null>(null);
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(m => (m === msg ? null : m));
+    }, 2200);
+  };
+
+  const handleCellContextMenu = (
+    e: React.MouseEvent,
+    log: AuditLog,
+    colKey: string,
+    colValue: any
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      log,
+      colKey,
+      colValue,
+    });
+  };
+
+  const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
+    if (!contextMenu) return [];
+    const { log, colKey, colValue } = contextMenu;
+    const items: ContextMenuItem[] = [];
+
+    items.push({
+      label: 'Inspect Audit Record',
+      sublabel: `Open full modal for ${log.id.slice(0, 8)}...`,
+      icon: Eye,
+      iconColor: '#2563eb',
+      onClick: () => setActiveLogModal(log),
+    });
+
+    if (log.username) {
+      items.push({
+        label: `Filter by User "${log.username}"`,
+        icon: UserCheck,
+        iconColor: '#7c3aed',
+        onClick: () => {
+          handleUserFilterChange(log.username);
+          showToast(`Filtered by user: ${log.username}`);
+        },
+      });
+    }
+
+    if (log.action) {
+      items.push({
+        label: `Filter by Action "${log.action}"`,
+        icon: Filter,
+        iconColor: '#ea580c',
+        onClick: () => {
+          setActionFilter(log.action);
+          setPage(1);
+          showToast(`Filtered by action: ${log.action}`);
+        },
+        dividerAfter: true,
+      });
+    }
+
+    if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
+      const displayVal = typeof colValue === 'object' ? JSON.stringify(colValue) : String(colValue);
+      const truncated = displayVal.length > 25 ? displayVal.slice(0, 25) + '...' : displayVal;
+      items.push({
+        label: `Copy ${formatHeader(colKey)}`,
+        sublabel: `"${truncated}"`,
+        icon: Copy,
+        iconColor: '#059669',
+        onClick: () => {
+          navigator.clipboard.writeText(displayVal);
+          showToast(`Copied ${formatHeader(colKey)} to clipboard!`);
+        },
+      });
+    }
+
+    items.push({
+      label: 'Copy Record UUID',
+      sublabel: log.id,
+      icon: Copy,
+      onClick: () => {
+        navigator.clipboard.writeText(log.id);
+        showToast('Copied Audit Record UUID!');
+      },
+    });
+
+    if (log.data_hash) {
+      items.push({
+        label: 'Copy SHA-256 Hash',
+        sublabel: `${log.data_hash.slice(0, 16)}...`,
+        icon: Hash,
+        iconColor: '#059669',
+        onClick: () => {
+          navigator.clipboard.writeText(log.data_hash);
+          showToast('Copied cryptographic SHA-256 hash!');
+        },
+      });
+    }
+
+    items.push({
+      label: 'Copy Entire Record as JSON',
+      icon: Share2,
+      onClick: () => {
+        navigator.clipboard.writeText(JSON.stringify(log, null, 2));
+        showToast('Full audit log record copied as JSON!');
+      },
+    });
+
+    return items;
+  }, [contextMenu]);
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -616,11 +742,18 @@ export default function AuditLogsPage() {
                   <tr
                     key={log.id}
                     onClick={() => setActiveLogModal(log)}
-                    style={{ cursor: 'pointer' }}
-                    title="Click row to inspect full audit details"
+                    onContextMenu={ev => handleCellContextMenu(ev, log, 'id', log.id)}
+                    style={{
+                      cursor: 'pointer',
+                      background: contextMenu?.log?.id === log.id ? '#eff6ff' : undefined,
+                    }}
+                    title="Right-click for quick actions · Click row to inspect full audit details"
                   >
                     {/* 1. id (uuid) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#2563eb', fontWeight: 600 }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'id', log.id)}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', color: '#2563eb', fontWeight: 600 }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span title={log.id} style={{ maxWidth: 105, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {log.id.substring(0, 8)}...
@@ -863,6 +996,52 @@ export default function AuditLogsPage() {
         </div>,
         document.body
       )}
+
+      {/* Right-Click Context Menu */}
+      {contextMenu && (
+        <TableContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          title={`Audit: ${contextMenu.log.action}`}
+          subtitle={`${contextMenu.log.username || 'system'} · ${contextMenu.log.id.slice(0, 8)}...`}
+          badge={{
+            label: contextMenu.log.result || 'success',
+            color: contextMenu.log.result === 'success' ? '#059669' : '#dc2626',
+            bg: contextMenu.log.result === 'success' ? '#ecfdf5' : '#fef2f2',
+          }}
+          items={contextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Copy / Action Toast Notification */}
+      {toastMessage &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              bottom: 30,
+              right: 30,
+              zIndex: 100000,
+              background: '#1e293b',
+              color: '#ffffff',
+              padding: '9px 16px',
+              borderRadius: 8,
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25) !important',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              pointerEvents: 'none',
+              animation: 'contextMenuFadeIn 0.15s ease',
+            }}
+          >
+            <Check size={14} style={{ color: '#22c55e' }} />
+            <span>{toastMessage}</span>
+          </div>,
+          document.body
+        )}
 
       {/* Detailed Inspection Modal */}
       {activeLogModal && (

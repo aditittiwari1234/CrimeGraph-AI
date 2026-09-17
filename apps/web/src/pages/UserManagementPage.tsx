@@ -2,11 +2,13 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus, Pencil, Trash2, Camera, X, Save, Search, UserCheck, Users,
-  Shield, ChevronDown, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle
+  Shield, ChevronDown, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle,
+  Copy, Check, Share2, FileText, Mail
 } from 'lucide-react';
 import { useAuth, type User } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import ImageCropModal from '../components/profile/ImageCropModal';
+import TableContextMenu, { type ContextMenuItem } from '../components/common/TableContextMenu';
 
 const ROLES = [
   { value: 'administrator', label: 'Administrator' },
@@ -455,6 +457,133 @@ export default function UserManagementPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
 
+  // Right-click context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    targetUser: User;
+    colKey: string;
+    colValue: any;
+  } | null>(null);
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(m => (m === msg ? null : m));
+    }, 2200);
+  };
+
+  const handleCellContextMenu = (
+    e: React.MouseEvent,
+    targetUser: User,
+    colKey: string,
+    colValue: any
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      targetUser,
+      colKey,
+      colValue,
+    });
+  };
+
+  const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
+    if (!contextMenu) return [];
+    const { targetUser, colKey, colValue } = contextMenu;
+    const items: ContextMenuItem[] = [];
+
+    items.push({
+      label: 'Edit User Profile',
+      sublabel: `Edit ${targetUser.fullName}`,
+      icon: Pencil,
+      iconColor: '#2563eb',
+      onClick: () => openEdit(targetUser),
+    });
+
+    items.push({
+      label: `Audit Logs for @${targetUser.username}`,
+      sublabel: 'View cryptographic actions trail',
+      icon: FileText,
+      iconColor: '#7c3aed',
+      onClick: () => navigate(`/audit?user=${encodeURIComponent(targetUser.username)}`),
+      dividerAfter: true,
+    });
+
+    if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
+      const displayVal = String(colValue);
+      const truncated = displayVal.length > 25 ? displayVal.slice(0, 25) + '...' : displayVal;
+      items.push({
+        label: `Copy ${formatHeader(colKey)}`,
+        sublabel: `"${truncated}"`,
+        icon: Copy,
+        iconColor: '#059669',
+        onClick: () => {
+          navigator.clipboard.writeText(displayVal);
+          showToast(`Copied ${formatHeader(colKey)} to clipboard!`);
+        },
+      });
+    }
+
+    items.push({
+      label: 'Copy Username',
+      sublabel: `@${targetUser.username}`,
+      icon: Copy,
+      onClick: () => {
+        navigator.clipboard.writeText(targetUser.username);
+        showToast(`Copied @${targetUser.username} to clipboard!`);
+      },
+    });
+
+    if (targetUser.email) {
+      items.push({
+        label: 'Copy Email Address',
+        sublabel: targetUser.email,
+        icon: Mail,
+        onClick: () => {
+          navigator.clipboard.writeText(targetUser.email);
+          showToast('Copied email address to clipboard!');
+        },
+      });
+    }
+
+    items.push({
+      label: 'Copy User ID',
+      sublabel: targetUser.id,
+      icon: Copy,
+      onClick: () => {
+        navigator.clipboard.writeText(targetUser.id);
+        showToast('Copied User ID!');
+      },
+    });
+
+    items.push({
+      label: 'Copy User as JSON',
+      icon: Share2,
+      onClick: () => {
+        navigator.clipboard.writeText(JSON.stringify(targetUser, null, 2));
+        showToast('Full user record copied as JSON!');
+      },
+      dividerAfter: targetUser.id !== currentUser?.id,
+    });
+
+    if (targetUser.id !== currentUser?.id) {
+      items.push({
+        label: 'Delete User Account',
+        sublabel: `Remove @${targetUser.username}`,
+        icon: Trash2,
+        danger: true,
+        onClick: () => setDeleteConfirm(targetUser.id),
+      });
+    }
+
+    return items;
+  }, [contextMenu, currentUser?.id, navigate]);
+
   // Horizontal scroll sync refs & logic for always-visible bottom scrollbar
   const tableRef = useRef<HTMLDivElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
@@ -874,9 +1003,18 @@ export default function UserManagementPage() {
               {paginated.map(u => {
                 const rc = ROLE_COLORS[u.role] ?? { bg: 'rgba(100,100,100,0.1)', text: '#64748b' };
                 return (
-                  <tr key={u.id}>
+                  <tr
+                    key={u.id}
+                    onContextMenu={ev => handleCellContextMenu(ev, u, 'id', u.id)}
+                    style={{
+                      background: contextMenu?.targetUser?.id === u.id ? '#eff6ff' : undefined,
+                    }}
+                  >
                     {/* id */}
-                    <td style={{ color: '#2563eb', fontWeight: 600, borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'id', u.id)}
+                      style={{ color: '#2563eb', fontWeight: 600, borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 120 }}>
                         {u.id}
                       </span>
@@ -1040,6 +1178,52 @@ export default function UserManagementPage() {
         </div>,
         document.body
       )}
+
+      {/* Table Right-Click Context Menu */}
+      {contextMenu && (
+        <TableContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          title={contextMenu.targetUser.fullName}
+          subtitle={`@${contextMenu.targetUser.username} · ${contextMenu.targetUser.department || contextMenu.targetUser.role}`}
+          badge={{
+            label: contextMenu.targetUser.role.replace(/_/g, ' '),
+            color: ROLE_COLORS[contextMenu.targetUser.role]?.text || '#2563eb',
+            bg: ROLE_COLORS[contextMenu.targetUser.role]?.bg || '#eff6ff',
+          }}
+          items={contextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Copy / Action Toast Notification */}
+      {toastMessage &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              bottom: 30,
+              right: 30,
+              zIndex: 100000,
+              background: '#1e293b',
+              color: '#ffffff',
+              padding: '9px 16px',
+              borderRadius: 8,
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25) !important',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              pointerEvents: 'none',
+              animation: 'contextMenuFadeIn 0.15s ease',
+            }}
+          >
+            <Check size={14} style={{ color: '#22c55e' }} />
+            <span>{toastMessage}</span>
+          </div>,
+          document.body
+        )}
 
       {/* Add modal */}
       {showModal && (
