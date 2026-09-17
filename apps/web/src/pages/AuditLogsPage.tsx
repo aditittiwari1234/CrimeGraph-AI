@@ -4,7 +4,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, RefreshCw, ShieldCheck, Copy, Check, Eye, X,
   ChevronLeft, ChevronRight, Filter, Database, Hash, User,
-  ExternalLink, Share2, Info, UserCheck, Shield
+  ExternalLink, Info, UserCheck, Shield
 } from 'lucide-react';
 import api from '../lib/api';
 import TableContextMenu, { type ContextMenuItem } from '../components/common/TableContextMenu';
@@ -203,15 +203,15 @@ export default function AuditLogsPage() {
 
     if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
       const displayVal = typeof colValue === 'object' ? JSON.stringify(colValue) : String(colValue);
-      const truncated = displayVal.length > 25 ? displayVal.slice(0, 25) + '...' : displayVal;
+      const truncated = displayVal.length > 30 ? displayVal.slice(0, 30) + '...' : displayVal;
       items.push({
-        label: `Copy ${formatHeader(colKey)}`,
+        label: `Copy Cell Value (${formatHeader(colKey)})`,
         sublabel: `"${truncated}"`,
         icon: Copy,
         iconColor: '#059669',
         onClick: () => {
           navigator.clipboard.writeText(displayVal);
-          showToast(`Copied ${formatHeader(colKey)} to clipboard!`);
+          showToast(`Copied ${formatHeader(colKey)}: "${truncated}" to clipboard!`);
         },
       });
     }
@@ -238,15 +238,6 @@ export default function AuditLogsPage() {
         },
       });
     }
-
-    items.push({
-      label: 'Copy Entire Record as JSON',
-      icon: Share2,
-      onClick: () => {
-        navigator.clipboard.writeText(JSON.stringify(log, null, 2));
-        showToast('Full audit log record copied as JSON!');
-      },
-    });
 
     return items;
   }, [contextMenu]);
@@ -772,12 +763,18 @@ export default function AuditLogsPage() {
                     </td>
 
                     {/* 2. timestamp (timestamptz) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', color: '#64748b' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'timestamp', formatTimestamp(log.timestamp))}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', color: '#64748b' }}
+                    >
                       {formatTimestamp(log.timestamp)}
                     </td>
 
                     {/* 3. user_id (varchar) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'user_id', log.user_id ?? '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}
+                    >
                       {log.user_id ? (
                         <span style={{
                           padding: '2px 6px', borderRadius: 4, background: '#f1f5f9',
@@ -791,7 +788,10 @@ export default function AuditLogsPage() {
                     </td>
 
                     {/* 4. username (varchar) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'username', `@${log.username}`)}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <button
                           onClick={(e) => {
@@ -816,7 +816,10 @@ export default function AuditLogsPage() {
                     </td>
 
                     {/* 5. action (varchar) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'action', log.action)}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}
+                    >
                       <span style={{
                         padding: '3px 8px', borderRadius: 5, fontSize: '0.72rem', fontWeight: 700,
                         fontFamily: 'var(--font-mono)', letterSpacing: '0.03em',
@@ -827,7 +830,10 @@ export default function AuditLogsPage() {
                     </td>
 
                     {/* 6. resource_type (varchar) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'resource_type', log.resource_type || '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}
+                    >
                       <span style={{
                         padding: '2px 7px', borderRadius: 4, background: '#f8fafc',
                         border: '1px solid #e2e8f0', color: '#475569', fontSize: '0.74rem'
@@ -837,7 +843,10 @@ export default function AuditLogsPage() {
                     </td>
 
                     {/* 7. resource_id (varchar) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'resource_id', log.resource_id || '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}
+                    >
                       {log.resource_id ? (
                         <span style={{ color: '#0284c7', fontWeight: 600 }}>
                           {log.resource_id}
@@ -848,14 +857,20 @@ export default function AuditLogsPage() {
                     </td>
 
                     {/* 8. description (text) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', minWidth: 200, maxWidth: 320 }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'description', log.description || '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', minWidth: 200, maxWidth: 320 }}
+                    >
                       <span title={log.description} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {log.description || '—'}
                       </span>
                     </td>
 
                     {/* 9. result (varchar) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'result', log.result || '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}
+                    >
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', gap: 5,
                         padding: '2px 8px', borderRadius: 12,
@@ -870,19 +885,28 @@ export default function AuditLogsPage() {
                     </td>
 
                     {/* 10. ip_address (varchar) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', color: '#475569' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'ip_address', log.ip_address || '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', color: '#475569' }}
+                    >
                       {log.ip_address || <span className="cell-null">NULL</span>}
                     </td>
 
                     {/* 11. user_agent (text) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', maxWidth: 160 }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'user_agent', log.user_agent || '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', maxWidth: 160 }}
+                    >
                       <span title={log.user_agent} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b' }}>
                         {log.user_agent || <span className="cell-null">NULL</span>}
                       </span>
                     </td>
 
                     {/* 12. metadata (jsonb) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'metadata', JSON.stringify(log.metadata || {}))}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', textAlign: 'center' }}
+                    >
                       {log.metadata && Object.keys(log.metadata).length > 0 ? (
                         <button
                           onClick={(e) => {
@@ -904,7 +928,10 @@ export default function AuditLogsPage() {
                     </td>
 
                     {/* 13. data_hash (varchar) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'data_hash', log.data_hash || '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         <span title={log.data_hash} style={{ color: '#475569', fontSize: '0.75rem' }}>
                           {log.data_hash ? `${log.data_hash.substring(0, 10)}...${log.data_hash.substring(log.data_hash.length - 6)}` : <span className="cell-null">NULL</span>}
@@ -925,7 +952,10 @@ export default function AuditLogsPage() {
                     </td>
 
                     {/* 14. previous_hash (varchar) */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, log, 'previous_hash', log.previous_hash || '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         {log.previous_hash === 'GENESIS' ? (
                           <span style={{
@@ -945,7 +975,7 @@ export default function AuditLogsPage() {
                                 copyToClipboard(log.previous_hash, `ph-${log.id}`);
                               }}
                               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#94a3b8' }}
-                              title="Copy full previous hash"
+                              title="Copy full previous block hash"
                             >
                               {copiedKey === `ph-${log.id}` ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
                             </button>

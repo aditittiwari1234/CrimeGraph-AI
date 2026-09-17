@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Users, Phone, Truck, Building2, CreditCard, MapPin,
   Flag, RefreshCw, CheckCircle2, Database, AlertCircle,
-  ExternalLink, Network, Copy, Check, Filter, Info, Share2,
+  ExternalLink, Network, Copy, Check, Filter, Info,
   Layers, ChevronLeft, ChevronRight, FileText, ShieldAlert,
   FileCode, Activity, Eye, AlertTriangle
 } from 'lucide-react';
@@ -337,15 +337,15 @@ export default function EntitiesPage() {
 
     if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
       const displayVal = String(colValue);
-      const truncated = displayVal.length > 25 ? displayVal.slice(0, 25) + '...' : displayVal;
+      const truncated = displayVal.length > 30 ? displayVal.slice(0, 30) + '...' : displayVal;
       items.push({
-        label: `Copy ${formatHeader(colKey)}`,
+        label: `Copy Cell Value (${formatHeader(colKey)})`,
         sublabel: `"${truncated}"`,
         icon: Copy,
         iconColor: '#059669',
         onClick: () => {
           navigator.clipboard.writeText(displayVal);
-          showToast(`Copied ${formatHeader(colKey)} to clipboard!`);
+          showToast(`Copied ${formatHeader(colKey)}: "${truncated}" to clipboard!`);
         },
       });
     }
@@ -357,15 +357,6 @@ export default function EntitiesPage() {
       onClick: () => {
         navigator.clipboard.writeText(entity.id);
         showToast(`Copied ID (${entity.id}) to clipboard!`);
-      },
-    });
-
-    items.push({
-      label: 'Copy Entire Row as JSON',
-      icon: Share2,
-      onClick: () => {
-        navigator.clipboard.writeText(JSON.stringify(entity, null, 2));
-        showToast('Entire record copied to clipboard as JSON!');
       },
       dividerAfter: true,
     });
