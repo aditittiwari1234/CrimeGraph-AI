@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
+  baseURL,
   headers: { 'Content-Type': 'application/json' },
   timeout: 30000,
 });
@@ -25,15 +27,21 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('refreshToken');
       if (refreshToken) {
         try {
-          const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/refresh`, { refreshToken });
+          const response = await axios.post(`${baseURL}/api/auth/refresh`, { refreshToken });
           const { accessToken } = response.data;
-          localStorage.setItem('accessToken', accessToken);
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-          return api(originalRequest);
-        } catch {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          window.location.href = '/login';
+          if (accessToken) {
+            localStorage.setItem('accessToken', accessToken);
+            originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+            return api(originalRequest);
+          }
+        } catch (refreshErr: any) {
+          // Only force logout if the refresh token is explicitly rejected as invalid/expired (401/403)
+          if (refreshErr?.response?.status === 401 || refreshErr?.response?.status === 403) {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('cg_demo_user');
+            window.location.href = '/login';
+          }
         }
       }
     }
