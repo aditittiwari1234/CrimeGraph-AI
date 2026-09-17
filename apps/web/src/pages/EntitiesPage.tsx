@@ -988,7 +988,7 @@ export default function EntitiesPage() {
 
       {/* Filter, search bar and pagination above the table */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="search-input-wrapper" style={{ flex: 1, minWidth: 260 }}>
+        <div className="search-input-wrapper" style={{ width: 280, maxWidth: '100%' }}>
           <Search size={15} className="search-icon" />
           <input
             className="form-input"

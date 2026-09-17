@@ -18,10 +18,10 @@ const ROLES = [
 ];
 
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
-  administrator:      { bg: 'rgba(220,38,38,0.1)',   text: '#dc2626' },
-  senior_investigator:{ bg: 'rgba(124,58,237,0.1)', text: '#7c3aed' },
-  investigator:       { bg: 'rgba(37,99,235,0.1)',   text: '#2563eb' },
-  analyst:            { bg: 'rgba(5,150,105,0.1)',   text: '#059669' },
+  administrator: { bg: 'rgba(220,38,38,0.1)', text: '#dc2626' },
+  senior_investigator: { bg: 'rgba(124,58,237,0.1)', text: '#7c3aed' },
+  investigator: { bg: 'rgba(37,99,235,0.1)', text: '#2563eb' },
+  analyst: { bg: 'rgba(5,150,105,0.1)', text: '#059669' },
 };
 
 const DEPARTMENTS = [
@@ -37,19 +37,19 @@ const DEPARTMENTS = [
 ];
 
 const USER_COLUMNS = [
-  { key: 'id',           type: 'varchar(64)',   sortable: true },
-  { key: 'username',     type: 'varchar(100)',  sortable: true },
-  { key: 'full_name',    type: 'varchar(255)',  sortable: true },
-  { key: 'role',         type: 'varchar(50)',   sortable: true },
-  { key: 'department',   type: 'varchar(255)',  sortable: true },
-  { key: 'badge_number', type: 'varchar(50)',   sortable: true },
-  { key: 'email',        type: 'varchar(255)',  sortable: true },
-  { key: 'is_active',    type: 'boolean',       sortable: true },
-  { key: 'last_login',   type: 'timestamptz',   sortable: true },
-  { key: 'created_at',   type: 'timestamptz',   sortable: true },
-  { key: 'updated_at',   type: 'timestamptz',   sortable: true },
-  { key: 'audit_logs',   type: 'int',           sortable: true },
-  { key: 'actions',      type: 'actions',       sortable: false },
+  { key: 'id', type: 'varchar(64)', sortable: true },
+  { key: 'username', type: 'varchar(100)', sortable: true },
+  { key: 'full_name', type: 'varchar(255)', sortable: true },
+  { key: 'role', type: 'varchar(50)', sortable: true },
+  { key: 'department', type: 'varchar(255)', sortable: true },
+  { key: 'badge_number', type: 'varchar(50)', sortable: true },
+  { key: 'email', type: 'varchar(255)', sortable: true },
+  { key: 'is_active', type: 'boolean', sortable: true },
+  { key: 'last_login', type: 'timestamptz', sortable: true },
+  { key: 'created_at', type: 'timestamptz', sortable: true },
+  { key: 'updated_at', type: 'timestamptz', sortable: true },
+  { key: 'audit_logs', type: 'int', sortable: true },
+  { key: 'actions', type: 'actions', sortable: false },
 ];
 
 function formatHeader(key: string): string {
@@ -896,11 +896,11 @@ export default function UserManagementPage() {
 
       {/* Filter, search bar and pagination above the table */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="search-input-wrapper" style={{ flex: 1, minWidth: 260 }}>
+        <div className="search-input-wrapper" style={{ width: 280, maxWidth: '100%' }}>
           <Search size={15} className="search-icon" />
           <input
             className="form-input"
-            placeholder="Search users by name, username, email, department…"
+            placeholder="Search users by name, username, email…"
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
           />
@@ -914,7 +914,7 @@ export default function UserManagementPage() {
             style={{
               padding: '8px 32px 8px 12px',
               fontSize: '0.82rem',
-              height: 38,
+              height: 34,
               borderRadius: 8,
               border: '1px solid #cbd5e1'
             }}
