@@ -775,40 +775,98 @@ export default function UserManagementPage() {
 
   return (
     <div className="fade-in">
-      {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
-              User Management
-            </h1>
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              fontSize: '0.75rem',
-              padding: '2px 8px',
-              borderRadius: 12,
-              background: '#ecfdf5',
-              color: '#047857',
-              border: '1px solid #a7f3d0',
-              fontWeight: 500
-            }}>
-              <CheckCircle2 size={12} />
-              PostgreSQL Connected · {managedUsers.length} Users
-            </span>
+      {/* Page header with inline stats cards */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h1 style={{ fontSize: '1.45rem', fontWeight: 700, margin: 0, whiteSpace: 'nowrap' }}>
+                User Management
+              </h1>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: '0.72rem',
+                padding: '2px 8px',
+                borderRadius: 12,
+                background: '#ecfdf5',
+                color: '#047857',
+                border: '1px solid #a7f3d0',
+                fontWeight: 500,
+                whiteSpace: 'nowrap'
+              }}>
+                <CheckCircle2 size={12} />
+                PostgreSQL Connected
+              </span>
+            </div>
+            <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+              System accounts with role governance
+            </p>
           </div>
-          <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-            System personnel accounts stored in PostgreSQL database with role governance
-          </p>
+
+          {/* Inline Stats Cards next to the heading */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {[
+              { label: 'All Users', value: stats.total, icon: Users, color: '#2563eb', role: '' },
+              { label: 'Admins', value: stats.admins, icon: Shield, color: '#dc2626', role: 'administrator' },
+              { label: 'Investigators', value: stats.investigators, icon: UserCheck, color: '#7c3aed', role: 'investigator' },
+              { label: 'Analysts', value: stats.analysts, icon: Users, color: '#059669', role: 'analyst' },
+            ].map(({ label, value, icon: Icon, color, role }) => {
+              const isSelected = roleFilter === role || (role === '' && !roleFilter);
+              return (
+                <div
+                  key={label}
+                  onClick={() => {
+                    setRoleFilter(roleFilter === role && role !== '' ? '' : role);
+                    setPage(1);
+                  }}
+                  title={role ? `Click to filter by ${label}` : 'Click to show all users'}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '5px 12px',
+                    borderRadius: 8,
+                    background: isSelected && role ? `${color}10` : '#ffffff',
+                    border: isSelected && role ? `1.5px solid ${color}` : '1px solid #e2e8f0',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+                  }}
+                >
+                  <div style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 6,
+                    background: `${color}15`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <Icon size={12} style={{ color }} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                    <span style={{ fontSize: '1.15rem', fontWeight: 800, color, lineHeight: 1 }}>
+                      {value}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {label}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <button
             onClick={handleRefresh}
             disabled={isRefreshing}
             className="btn btn-secondary btn-sm"
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 35 }}
             title="Refresh list from database"
           >
             <RefreshCw size={13} className={isRefreshing ? 'spin' : ''} />
@@ -817,10 +875,10 @@ export default function UserManagementPage() {
 
           <button
             onClick={() => setShowModal(true)}
-            className="btn btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            className="btn btn-primary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 35 }}
           >
-            <Plus size={15} />
+            <Plus size={14} />
             Add User
           </button>
         </div>
@@ -837,26 +895,6 @@ export default function UserManagementPage() {
           <span>{syncNotice}</span>
         </div>
       )}
-
-      {/* Stats cards */}
-      <div className="grid-4" style={{ marginBottom: 20, gridTemplateColumns: 'repeat(4, 1fr)' }}>
-        {[
-          { label: 'Database Users', value: stats.total, icon: Users, color: '#2563eb' },
-          { label: 'Administrators', value: stats.admins, icon: Shield, color: '#dc2626' },
-          { label: 'Investigators', value: stats.investigators, icon: UserCheck, color: '#7c3aed' },
-          { label: 'Analysts', value: stats.analysts, icon: Users, color: '#059669' },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="stat-card" style={{ borderTop: `3px solid ${color}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 7, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon size={14} style={{ color }} />
-              </div>
-              <span className="stat-label">{label}</span>
-            </div>
-            <div className="stat-value" style={{ fontSize: '1.6rem', color }}>{value}</div>
-          </div>
-        ))}
-      </div>
 
       {/* Filter, search bar and pagination above the table */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
