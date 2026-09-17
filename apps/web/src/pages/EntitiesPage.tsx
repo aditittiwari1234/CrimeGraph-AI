@@ -4,7 +4,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Users, Phone, Truck, Building2, CreditCard, MapPin,
   Flag, RefreshCw, CheckCircle2, Database, AlertCircle,
-  ExternalLink, Network, Copy, Check, Filter, Info, Share2
+  ExternalLink, Network, Copy, Check, Filter, Info, Share2,
+  Layers, ChevronLeft, ChevronRight, FileText, ShieldAlert,
+  FileCode, Activity, Eye, AlertTriangle
 } from 'lucide-react';
 import { useDatabases } from '../contexts/DatabaseContext';
 import TableContextMenu, { type ContextMenuItem } from '../components/common/TableContextMenu';
@@ -26,14 +28,34 @@ function getInitialCachedData(): Record<string, any[]> | null {
   return null;
 }
 
-const TYPE_CONFIG: Record<string, { label: string; color: string; icon: any; tableKey: string }> = {
-  Person:       { label: 'Persons',       color: '#2563eb', icon: Users,      tableKey: 'persons' },
-  Phone:        { label: 'Phones',        color: '#16a34a', icon: Phone,      tableKey: 'cdr_records' },
-  Vehicle:      { label: 'Vehicles',      color: '#ea580c', icon: Truck,      tableKey: 'vehicles' },
-  Organization: { label: 'Organisations', color: '#7c3aed', icon: Building2,  tableKey: 'organisations' },
-  Account:      { label: 'Accounts',      color: '#ca8a04', icon: CreditCard, tableKey: 'bank_accounts' },
-  Location:     { label: 'Locations',     color: '#dc2626', icon: MapPin,     tableKey: 'locations' },
+const TYPE_CONFIG: Record<string, { label: string; color: string; icon: any; tableKey?: string }> = {
+  Person:       { label: 'Persons',       color: '#2563eb', icon: Users,         tableKey: 'persons' },
+  Phone:        { label: 'Phones',        color: '#16a34a', icon: Phone,         tableKey: 'cdr_records' },
+  Vehicle:      { label: 'Vehicles',      color: '#ea580c', icon: Truck,         tableKey: 'vehicles' },
+  Organization: { label: 'Organisations', color: '#7c3aed', icon: Building2,     tableKey: 'organisations' },
+  Account:      { label: 'Accounts',      color: '#ca8a04', icon: CreditCard,    tableKey: 'bank_accounts' },
+  Location:     { label: 'Locations',     color: '#dc2626', icon: MapPin,        tableKey: 'locations' },
+  Case:         { label: 'Cases / FIRs',  color: '#0891b2', icon: FileText,      tableKey: 'fir_records' },
+  Evidence:     { label: 'Evidence',      color: '#4f46e5', icon: ShieldAlert,   tableKey: 'evidence_ledger' },
+  Document:     { label: 'Documents',     color: '#475569', icon: FileCode,      tableKey: 'documents' },
+  Transaction:  { label: 'Transactions',  color: '#d97706', icon: Activity,      tableKey: 'financial_transactions' },
+  Surveillance: { label: 'Surveillance',  color: '#0284c7', icon: Eye,           tableKey: 'surveillance_reports' },
+  Alert:        { label: 'Alerts',        color: '#e11d48', icon: AlertTriangle,  tableKey: 'alerts' },
 };
+
+const FALLBACK_PALETTE = ['#2563eb', '#16a34a', '#ea580c', '#7c3aed', '#ca8a04', '#dc2626', '#0891b2', '#db2777', '#4f46e5', '#059669', '#d97706', '#0284c7'];
+
+function getTypeConfig(type: string): { label: string; color: string; icon: any } {
+  if (TYPE_CONFIG[type]) return TYPE_CONFIG[type];
+  let hash = 0;
+  for (let i = 0; i < type.length; i++) hash = type.charCodeAt(i) + ((hash << 5) - hash);
+  const color = FALLBACK_PALETTE[Math.abs(hash) % FALLBACK_PALETTE.length];
+  return {
+    label: type.endsWith('s') ? type : `${type}s`,
+    color,
+    icon: Database,
+  };
+}
 
 // Precise column schemas matching the connected PostgreSQL database
 const KNOWN_COLUMNS: Record<string, { key: string; type: string; sortable?: boolean }[]> = {
@@ -386,9 +408,20 @@ export default function EntitiesPage() {
   // Horizontal scroll sync refs & logic for always-visible bottom scrollbar
   const tableRef = useRef<HTMLDivElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
+  const cardsTrackRef = useRef<HTMLDivElement>(null);
   const [scrollWidth, setScrollWidth] = useState(2000);
   const isSyncingBottom = useRef(false);
   const isSyncingTable = useRef(false);
+
+  const scrollCards = (direction: 'left' | 'right') => {
+    if (cardsTrackRef.current) {
+      const amount = 340;
+      cardsTrackRef.current.scrollBy({
+        left: direction === 'left' ? -amount : amount,
+        behavior: 'smooth',
+      });
+    }
+  };
 
   const handleTableScroll = () => {
     if (isSyncingBottom.current) {
@@ -479,7 +512,7 @@ export default function EntitiesPage() {
     if (urlSearch !== null && urlSearch !== search) setSearch(urlSearch);
   }, [searchParams]);
 
-  // Aggregate entities by type strictly from live database tables (NO mock fallbacks)
+  // Aggregate entities by type strictly from live database tables (future-proof & auto-discovering)
   const { entitiesByType, allEntities, counts } = useMemo(() => {
     if (!liveData) {
       return {
@@ -496,18 +529,18 @@ export default function EntitiesPage() {
       };
     }
 
-    const rawPersons = (liveData['persons'] || liveData['person'] || [])
-      .map(r => ({ ...r, nodeType: 'Person' }));
-    const rawVehicles = (liveData['vehicles'] || liveData['vehicle'] || [])
-      .map(r => ({ ...r, nodeType: 'Vehicle' }));
-    const rawOrgs = (liveData['organisations'] || liveData['organizations'] || liveData['organisation'] || [])
-      .map(r => ({ ...r, nodeType: 'Organization' }));
-    const rawAccounts = (liveData['bank_accounts'] || liveData['accounts'] || liveData['account'] || [])
-      .map(r => ({ ...r, nodeType: 'Account' }));
-    const rawLocations = (liveData['locations'] || liveData['location'] || [])
-      .map(r => ({ ...r, nodeType: 'Location' }));
-    const rawPhones = (liveData['cdr_records'] || liveData['phones'] || liveData['phone'] || [])
-      .map(r => ({ ...r, nodeType: 'Phone' }));
+    const rawPersons = (liveData['persons'] || liveData['person'] || []).map(r => ({ ...r, nodeType: 'Person' }));
+    const rawVehicles = (liveData['vehicles'] || liveData['vehicle'] || []).map(r => ({ ...r, nodeType: 'Vehicle' }));
+    const rawOrgs = (liveData['organisations'] || liveData['organizations'] || liveData['organisation'] || []).map(r => ({ ...r, nodeType: 'Organization' }));
+    const rawAccounts = (liveData['bank_accounts'] || liveData['accounts'] || liveData['account'] || []).map(r => ({ ...r, nodeType: 'Account' }));
+    const rawLocations = (liveData['locations'] || liveData['location'] || []).map(r => ({ ...r, nodeType: 'Location' }));
+    const rawPhones = (liveData['cdr_records'] || liveData['phones'] || liveData['phone'] || []).map(r => ({ ...r, nodeType: 'Phone' }));
+    const rawCases = (liveData['fir_records'] || liveData['cases'] || liveData['case'] || []).map(r => ({ ...r, nodeType: 'Case' }));
+    const rawEvidence = (liveData['evidence_ledger'] || liveData['evidence'] || []).map(r => ({ ...r, nodeType: 'Evidence' }));
+    const rawDocuments = (liveData['documents'] || liveData['document'] || []).map(r => ({ ...r, nodeType: 'Document' }));
+    const rawTransactions = (liveData['financial_transactions'] || liveData['transactions'] || []).map(r => ({ ...r, nodeType: 'Transaction' }));
+    const rawSurveillance = (liveData['surveillance_reports'] || liveData['surveillance'] || []).map(r => ({ ...r, nodeType: 'Surveillance' }));
+    const rawAlerts = (liveData['alerts'] || liveData['alert'] || []).map(r => ({ ...r, nodeType: 'Alert' }));
 
     const byType: Record<string, any[]> = {
       Person: rawPersons,
@@ -518,28 +551,60 @@ export default function EntitiesPage() {
       Location: rawLocations,
     };
 
-    const combined = [
-      ...rawPersons,
-      ...rawPhones,
-      ...rawVehicles,
-      ...rawOrgs,
-      ...rawAccounts,
-      ...rawLocations,
-    ];
+    if (rawCases.length > 0) byType['Case'] = rawCases;
+    if (rawEvidence.length > 0) byType['Evidence'] = rawEvidence;
+    if (rawDocuments.length > 0) byType['Document'] = rawDocuments;
+    if (rawTransactions.length > 0) byType['Transaction'] = rawTransactions;
+    if (rawSurveillance.length > 0) byType['Surveillance'] = rawSurveillance;
+    if (rawAlerts.length > 0) byType['Alert'] = rawAlerts;
+
+    // Dynamically discover any other custom tables that may be added to the database in the future
+    const standardTableNames = new Set([
+      'persons', 'person', 'vehicles', 'vehicle', 'organisations', 'organizations', 'organisation',
+      'bank_accounts', 'accounts', 'account', 'locations', 'location', 'cdr_records', 'phones', 'phone',
+      'fir_records', 'cases', 'case', 'evidence_ledger', 'evidence', 'documents', 'document',
+      'financial_transactions', 'transactions', 'surveillance_reports', 'surveillance', 'alerts', 'alert',
+      'users', 'refresh_tokens', 'audit_logs', 'investigations', 'investigation_entities', 'investigation_notes', 'external_data_sources'
+    ]);
+
+    for (const [tblName, rows] of Object.entries(liveData)) {
+      if (!standardTableNames.has(tblName) && Array.isArray(rows) && rows.length > 0) {
+        const cleanType = tblName
+          .replace(/_+/g, ' ')
+          .split(' ')
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join('')
+          .replace(/s$/, '');
+        if (!byType[cleanType]) {
+          byType[cleanType] = rows.map(r => ({ ...r, nodeType: cleanType }));
+        }
+      }
+    }
+
+    const combined: any[] = [];
+    const countsMap: Record<string, number> = {};
+
+    for (const [t, list] of Object.entries(byType)) {
+      combined.push(...list);
+      countsMap[t] = list.length;
+    }
 
     return {
       entitiesByType: byType,
       allEntities: combined,
-      counts: {
-        Person: rawPersons.length,
-        Phone: rawPhones.length,
-        Vehicle: rawVehicles.length,
-        Organization: rawOrgs.length,
-        Account: rawAccounts.length,
-        Location: rawLocations.length,
-      }
+      counts: countsMap,
     };
   }, [liveData]);
+
+  // Compute available entity types list (standard schemas + any populated schemas)
+  const availableTypes = useMemo(() => {
+    const typesSet = new Set<string>();
+    ['Person', 'Phone', 'Vehicle', 'Organization', 'Account', 'Location'].forEach(t => typesSet.add(t));
+    Object.keys(entitiesByType).forEach(t => {
+      if ((entitiesByType[t]?.length ?? 0) > 0) typesSet.add(t);
+    });
+    return Array.from(typesSet);
+  }, [entitiesByType]);
 
   // Determine active columns (base schema + any extra keys found in the database records)
   const resolvedType = typeFilter
@@ -547,11 +612,14 @@ export default function EntitiesPage() {
     : '';
 
   const activeCols = useMemo(() => {
-    if (!resolvedType || !KNOWN_COLUMNS[resolvedType]) {
+    if (!resolvedType) {
       return MIXED_COLUMNS;
     }
 
-    const baseCols = KNOWN_COLUMNS[resolvedType];
+    const baseCols = KNOWN_COLUMNS[resolvedType] || [
+      { key: 'id', type: 'varchar(32)', sortable: true },
+      { key: 'name', type: 'varchar(200)', sortable: true },
+    ];
     const records = entitiesByType[resolvedType] || [];
     if (records.length === 0) return baseCols;
 
@@ -664,6 +732,25 @@ export default function EntitiesPage() {
     };
   }, []);
 
+  // Enable mouse wheel horizontal scrolling on the entity cards track
+  useEffect(() => {
+    const el = cardsTrackRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        const delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+        el.scrollLeft += delta;
+      }
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, []);
+
   return (
     <div className="fade-in">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -689,7 +776,7 @@ export default function EntitiesPage() {
           <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
             {isLoading && !liveData
               ? 'Syncing live database records...'
-              : `${totalEntitiesCount} entities verified from live database across ${Object.keys(TYPE_CONFIG).length} schemas`}
+              : `${totalEntitiesCount} verified entities across ${availableTypes.length} database schemas`}
           </p>
         </div>
 
@@ -705,39 +792,203 @@ export default function EntitiesPage() {
         </button>
       </div>
 
-      {/* Type cards with exact counts */}
-      <div className="grid-4" style={{ marginBottom: 20, gridTemplateColumns: 'repeat(6, 1fr)' }}>
-        {Object.entries(TYPE_CONFIG).map(([type, cfg]) => {
+      {/* Scalable Entity Category Track Header */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+        marginTop: 4,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            fontSize: '0.74rem',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            color: '#64748b'
+          }}>
+            Entity Schemas
+          </span>
+          <span style={{
+            fontSize: '0.68rem',
+            fontWeight: 600,
+            padding: '2px 7px',
+            borderRadius: 10,
+            background: '#f1f5f9',
+            color: '#475569',
+          }}>
+            {availableTypes.length} Available
+          </span>
+        </div>
+
+        {/* Scroll navigation controls for horizontal overflow */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            onClick={() => scrollCards('left')}
+            className="card-nav-btn"
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: '#475569',
+            }}
+            title="Scroll categories left"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            onClick={() => scrollCards('right')}
+            className="card-nav-btn"
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: '#475569',
+            }}
+            title="Scroll categories right"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Scalable horizontal cards carousel track — adapts to any number of entities */}
+      <div
+        ref={cardsTrackRef}
+        className="hide-table-native-scrollbar"
+        style={{
+          display: 'flex',
+          gap: 10,
+          overflowX: 'auto',
+          paddingBottom: 4,
+          marginBottom: 16,
+          scrollBehavior: 'smooth',
+          scrollbarWidth: 'none',
+        }}
+      >
+        {/* 1. All Entities Master Card */}
+        <div
+          onClick={() => handleTypeFilter('')}
+          className="entity-type-card"
+          style={{
+            minWidth: 170,
+            flex: '0 0 auto',
+            cursor: 'pointer',
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: !typeFilter ? '#eff6ff' : '#ffffff',
+            border: !typeFilter ? '2px solid #2563eb' : '1px solid #e2e8f0',
+            boxShadow: !typeFilter ? '0 4px 12px rgba(37, 99, 235, 0.12)' : '0 1px 3px rgba(0, 0, 0, 0.04)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            gap: 6,
+          }}
+          title="Show all verified entities"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <div style={{
+                width: 26,
+                height: 26,
+                borderRadius: 6,
+                background: '#0f172a15',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <Layers size={13} style={{ color: '#0f172a' }} />
+              </div>
+              <span style={{ fontSize: '0.78rem', fontWeight: !typeFilter ? 700 : 600, color: '#0f172a' }}>
+                All Entities
+              </span>
+            </div>
+            {!typeFilter && (
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb', flexShrink: 0 }} />
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
+              {isLoading && !liveData ? '...' : totalEntitiesCount}
+            </div>
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 500 }}>
+              100%
+            </span>
+          </div>
+        </div>
+
+        {/* 2. Dynamic & Future-Proof Entity Type Cards */}
+        {availableTypes.map((type) => {
+          const cfg = getTypeConfig(type);
           const Icon = cfg.icon;
           const count = counts[type as keyof typeof counts] || 0;
           const isSelected = typeFilter.toLowerCase() === type.toLowerCase();
+          const percent = totalEntitiesCount > 0 ? Math.round((count / totalEntitiesCount) * 100) : 0;
+
           return (
             <div
               key={type}
               onClick={() => handleTypeFilter(type)}
-              className="stat-card"
+              className="entity-type-card"
               style={{
+                minWidth: 170,
+                flex: '0 0 auto',
                 cursor: 'pointer',
-                borderTop: isSelected ? `3px solid ${cfg.color}` : '3px solid transparent',
-                background: isSelected ? '#f8fafc' : '#ffffff',
+                padding: '10px 14px',
+                borderRadius: 10,
+                background: isSelected ? `${cfg.color}0a` : '#ffffff',
+                border: isSelected ? `2px solid ${cfg.color}` : '1px solid #e2e8f0',
+                boxShadow: isSelected ? `0 4px 12px ${cfg.color}25` : '0 1px 3px rgba(0, 0, 0, 0.04)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: 6,
               }}
+              title={`Filter by ${cfg.label} (${count} records)`}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 7,
-                  background: `${cfg.color}15`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Icon size={14} style={{ color: cfg.color }} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <div style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 6,
+                    background: `${cfg.color}18`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <Icon size={13} style={{ color: cfg.color }} />
+                  </div>
+                  <span style={{ fontSize: '0.78rem', fontWeight: isSelected ? 700 : 600, color: isSelected ? cfg.color : '#334155' }}>
+                    {cfg.label}
+                  </span>
                 </div>
-                <span className="stat-label" style={{ fontWeight: isSelected ? 600 : 500 }}>{cfg.label}</span>
+                {isSelected && (
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
+                )}
               </div>
-              <div className="stat-value" style={{ fontSize: '1.6rem', color: cfg.color }}>
-                {isLoading && !liveData ? <span style={{ fontSize: '1rem', color: '#94a3b8' }}>...</span> : count}
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: '1.45rem', fontWeight: 800, color: cfg.color, lineHeight: 1 }}>
+                  {isLoading && !liveData ? '...' : count}
+                </div>
+                <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 500 }}>
+                  {percent}%
+                </span>
               </div>
             </div>
           );
