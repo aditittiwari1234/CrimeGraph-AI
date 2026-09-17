@@ -6,13 +6,6 @@ import {
 } from 'lucide-react';
 import api from '../lib/api';
 
-const DEMO_ENTITY: Record<string, any> = {
-  'Person/P001': {
-    id: 'P001', nodeType: 'Person', name: 'Arjun Mehta', alias: 'AJ', age: 34, gender: 'Male',
-    location: 'Mumbai', communityId: 'C1', riskScore: 0.72, centralityScore: 0.85, betweennessScore: 0.78,
-  },
-};
-
 export default function EntityDetailPage() {
   const { type, id } = useParams();
   const navigate = useNavigate();
@@ -132,31 +125,63 @@ export default function EntityDetailPage() {
 
   useEffect(() => {
     if (!type || !id) return;
-    Promise.all([
-      api.get(`/api/entities/${type}/${id}`),
-    ]).then(([entityRes]) => {
-      setEntity(entityRes.data.entity);
-      setRelationships(entityRes.data.relationships || []);
-    }).catch(() => {
-      const key = `${type}/${id}`;
-      setEntity(DEMO_ENTITY[key] || { id, nodeType: type, name: `${type} ${id}` });
-      setRelationships([
-        { type: 'CALLS', target: { nodeType: 'Person', name: 'Vikram Sinha', id: 'P002' }, properties: { confidence: 0.89, timestamp: '2026-01-10', recordRef: 'CDR-001', source: 'CDR-2026-0001' } },
-        { type: 'OWNS', target: { nodeType: 'Phone', name: '9876543210', id: 'PH001' }, properties: { confidence: 0.99, source: 'TELECOM-RECORDS', recordRef: 'OWNS-PH001' } },
-        { type: 'WORKS_FOR', target: { nodeType: 'Organization', name: 'Shree Trading Co.', id: 'O001' }, properties: { confidence: 0.91, source: 'COMPANY-REGISTRY', recordRef: 'WF-P001-O001' } },
-        { type: 'APPEARED_IN_CASE', target: { nodeType: 'Case', name: 'FIR-2026-00451', id: 'CASE001' }, properties: { confidence: 0.90, role: 'Person of Interest', source: 'FIR-RECORD', recordRef: 'CASE-P001-C001' } },
-        { type: 'LOCATED_AT', target: { nodeType: 'Location', name: 'Kanpur Central Station', id: 'L001' }, properties: { confidence: 0.85, timestamp: '2026-01-14', source: 'SURV-2026-001', recordRef: 'LOC-P001-L001' } },
-      ]);
-    }).finally(() => setLoading(false));
+    setLoading(true);
 
-    // Load link predictions
-    api.get(`/api/graph/link-predictions/${type}/${id}`).then(res => {
-      setLinkPredictions(res.data.predictions || []);
-    }).catch(() => {
-      setLinkPredictions([
-        { entity: { id: 'P024', nodeType: 'Person', name: 'Girish Pandey' }, confidence: 0.71, commonLinks: 3, intermediaries: ['Ravi Kumar', 'Ajay Singh'], reason: 'Shares 3 common connections through: Ravi Kumar, Ajay Singh', disclaimer: 'POTENTIAL CONNECTION — Not confirmed. Requires investigator review.' },
-      ]);
-    });
+    api.get(`/api/entities/${type}/${id}`)
+      .then(entityRes => {
+        if (entityRes.data?.entity) {
+          setEntity(entityRes.data.entity);
+          setRelationships(entityRes.data.relationships || []);
+        }
+      })
+      .catch(() => {
+        // Retrieve real entity record from session cache if available
+        try {
+          const cachedStr = sessionStorage.getItem('crimegraph_entities_cache');
+          if (cachedStr) {
+            const cache = JSON.parse(cachedStr);
+            const tableKeyMap: Record<string, string[]> = {
+              Person: ['persons', 'person'],
+              Vehicle: ['vehicles', 'vehicle'],
+              Organization: ['organisations', 'organizations'],
+              Account: ['bank_accounts', 'accounts'],
+              Location: ['locations', 'location'],
+              Phone: ['cdr_records', 'phones']
+            };
+            const tables = tableKeyMap[type] || [];
+            for (const tbl of tables) {
+              const rows: any[] = cache[tbl] || [];
+              const match = rows.find(r =>
+                String(r.id) === String(id) ||
+                String(r.license_plate) === String(id) ||
+                String(r.name) === String(id) ||
+                String(r.account_number) === String(id) ||
+                String(r.phone_number) === String(id) ||
+                String(r.caller_number) === String(id)
+              );
+              if (match) {
+                setEntity({ ...match, nodeType: type });
+                setRelationships([]);
+                return;
+              }
+            }
+          }
+        } catch {}
+
+        // Clean real entity identity with zero mock relationships
+        setEntity({ id, nodeType: type, name: `${type} ${id}` });
+        setRelationships([]);
+      })
+      .finally(() => setLoading(false));
+
+    // Load real link predictions (never mock)
+    api.get(`/api/graph/link-predictions/${type}/${id}`)
+      .then(res => {
+        setLinkPredictions(res.data?.predictions || []);
+      })
+      .catch(() => {
+        setLinkPredictions([]);
+      });
   }, [type, id]);
 
   const getLabel = (e: any) => e?.name || e?.number || e?.licensePlate || e?.accountNumber || e?.id;

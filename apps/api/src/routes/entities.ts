@@ -6,7 +6,49 @@ import { logger } from '../utils/logger';
 const router = Router();
 router.use(authenticate);
 
+// GET /api/entities?type=Person&page=1&limit=20&sort=name&order=asc
+router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { type, page = '1', limit = '20', sort, order = 'asc' } = req.query;
+  const pageNum   = Math.max(1, parseInt(String(page)));
+  const limitNum  = Math.min(500, Math.max(1, parseInt(String(limit))));
+  const skip      = (pageNum - 1) * limitNum;
+  const validTypes = ['Person', 'Phone', 'Vehicle', 'Organization', 'Location', 'Account', 'Case', 'Event'];
+
+  try {
+    const typeFilter = type && validTypes.includes(String(type))
+      ? `(n:${String(type)})`
+      : '(n)  WHERE (n:Person OR n:Phone OR n:Vehicle OR n:Organization OR n:Location OR n:Account OR n:Case OR n:Event)';
+
+    // Total count
+    const countCypher = `MATCH ${typeFilter} RETURN count(n) as total`;
+    const countResult = await runCypherQuery(countCypher, {});
+    const total = countResult.records[0]?.get('total')?.toNumber?.() ?? 0;
+
+    // Sorted fetch
+    const sortProp = sort ? `n.${String(sort)}` : 'n.id';
+    const orderDir = String(order).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+    const dataCypher = `
+      MATCH ${typeFilter}
+      RETURN n, labels(n) as types
+      ORDER BY ${sortProp} ${orderDir}
+      SKIP $skip LIMIT $limit
+    `;
+    const result = await runCypherQuery(dataCypher, { skip, limit: limitNum });
+
+    const entities = result.records.map(r => ({
+      ...r.get('n').properties,
+      nodeType: r.get('types')[0],
+    }));
+
+    res.json({ entities, total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) });
+  } catch (error) {
+    logger.error('List entities error:', error);
+    res.status(500).json({ error: 'Failed to list entities' });
+  }
+});
+
 // GET /api/entities/search?q=&type=&limit=
+
 router.get('/search', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { q = '', type, limit = 20 } = req.query;
   const searchTerm = String(q).toLowerCase();
@@ -79,31 +121,68 @@ router.get('/:type/:id', async (req: AuthenticatedRequest, res: Response): Promi
 
   try {
     const nodeResult = await runCypherQuery(`MATCH (n:${type} {id: $id}) RETURN n`, { id });
-    if (nodeResult.records.length === 0) { res.status(404).json({ error: 'Entity not found' }); return; }
+    if (nodeResult.records.length > 0) {
+      const node = nodeResult.records[0].get('n').properties;
 
-    const node = nodeResult.records[0].get('n').properties;
+      // Get relationships
+      const relResult = await runCypherQuery(`
+        MATCH (n:${type} {id: $id})-[r]-(m)
+        RETURN r, m, labels(m) as targetType, type(r) as relType
+        LIMIT 100
+      `, { id });
 
-    // Get relationships
-    const relResult = await runCypherQuery(`
-      MATCH (n:${type} {id: $id})-[r]-(m)
-      RETURN r, m, labels(m) as targetType, type(r) as relType
-      LIMIT 100
-    `, { id });
+      const relationships = relResult.records.map(r => ({
+        type: r.get('relType'),
+        target: {
+          ...r.get('m').properties,
+          nodeType: r.get('targetType')[0],
+        },
+        properties: r.get('r').properties,
+      }));
 
-    const relationships = relResult.records.map(r => ({
-      type: r.get('relType'),
-      target: {
-        ...r.get('m').properties,
-        nodeType: r.get('targetType')[0],
-      },
-      properties: r.get('r').properties,
-    }));
+      await logAction(req.user?.id, req.user?.username, 'VIEW_ENTITY', 'entity', id, `Viewed ${type}: ${id}`, req.ip || '', req.headers['user-agent'] || '', 'success');
 
-    await logAction(req.user?.id, req.user?.username, 'VIEW_ENTITY', 'entity', id, `Viewed ${type}: ${id}`, req.ip || '', req.headers['user-agent'] || '', 'success');
-
-    res.json({ entity: { ...node, nodeType: type }, relationships, totalRelationships: relationships.length });
+      res.json({ entity: { ...node, nodeType: type }, relationships, totalRelationships: relationships.length });
+      return;
+    }
   } catch (error) {
-    logger.error('Get entity error:', error);
+    logger.warn(`Neo4j entity query failed or empty for ${type}:${id}, checking relational database...`);
+  }
+
+  // Fallback to PostgreSQL tables so real database entities render without fake mocks
+  try {
+    const tableMap: Record<string, { table: string; idCols: string[] }> = {
+      Person: { table: 'persons', idCols: ['id'] },
+      Vehicle: { table: 'vehicles', idCols: ['id', 'license_plate'] },
+      Organization: { table: 'organisations', idCols: ['id', 'name'] },
+      Location: { table: 'locations', idCols: ['id'] },
+      Account: { table: 'bank_accounts', idCols: ['id', 'account_number'] },
+      Phone: { table: 'cdr_records', idCols: ['id', 'caller_number', 'receiver_number'] },
+    };
+
+    const mapping = tableMap[type];
+    if (mapping) {
+      const { getPool } = await import('../db/postgres');
+      const pool = getPool();
+      for (const col of mapping.idCols) {
+        try {
+          const pgRes = await pool.query(`SELECT * FROM ${mapping.table} WHERE ${col} = $1 LIMIT 1`, [id]);
+          if (pgRes.rows.length > 0) {
+            const row = pgRes.rows[0];
+            await logAction(req.user?.id, req.user?.username, 'VIEW_ENTITY', 'entity', id, `Viewed ${type}: ${id} from PostgreSQL`, req.ip || '', req.headers['user-agent'] || '', 'success');
+            res.json({
+              entity: { ...row, nodeType: type },
+              relationships: [],
+              totalRelationships: 0,
+            });
+            return;
+          }
+        } catch {}
+      }
+    }
+    res.status(404).json({ error: 'Entity not found' });
+  } catch (pgError) {
+    logger.error('PostgreSQL get entity error:', pgError);
     res.status(500).json({ error: 'Failed to fetch entity' });
   }
 });
@@ -196,6 +275,8 @@ router.get('/:type/:id/timeline', async (req: AuthenticatedRequest, res: Respons
     logger.error('Get entity timeline error:', error);
     res.status(500).json({ error: 'Failed to fetch timeline' });
   }
+});
+
 // GET /api/entities/:type/:id/access — get entity clearance and access governance
 router.get('/:type/:id/access', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { type, id } = req.params;

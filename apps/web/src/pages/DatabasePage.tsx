@@ -327,20 +327,18 @@ export default function DatabasePage() {
     return Object.values(tablesData).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0);
   }, [tablesData, tableCounts]);
 
-  // Cell Renderer Helper
+  // Cell Renderer Helper — Neon-style minimal
   const renderCellContent = (val: any) => {
     if (val === null || val === undefined) {
-      return <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.75rem' }}>null</span>;
+      return <span style={{ color: '#cbd5e1', fontStyle: 'normal', fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }}>NULL</span>;
     }
     if (typeof val === 'boolean') {
       return (
         <span style={{
-          background: val ? '#dcfce7' : '#fee2e2',
-          color: val ? '#15803d' : '#b91c1c',
-          padding: '2px 8px',
-          borderRadius: 4,
-          fontSize: '0.72rem',
-          fontWeight: 700
+          color: val ? '#16a34a' : '#dc2626',
+          fontSize: '0.78rem',
+          fontFamily: 'var(--font-mono)',
+          fontWeight: 600,
         }}>
           {val ? 'true' : 'false'}
         </span>
@@ -349,32 +347,29 @@ export default function DatabasePage() {
     if (Array.isArray(val)) {
       return (
         <span style={{
-          background: '#f1f5f9',
-          color: '#475569',
-          padding: '2px 6px',
-          borderRadius: 4,
-          fontSize: '0.72rem',
-          fontWeight: 600
+          color: '#7c3aed',
+          fontSize: '0.78rem',
+          fontFamily: 'var(--font-mono)',
         }}>
-          Array({val.length})
+          [{val.length}]
         </span>
       );
     }
     if (typeof val === 'object') {
       return (
-        <span style={{ color: '#64748b', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-          {JSON.stringify(val).slice(0, 30)}...
+        <span style={{ color: '#64748b', fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }}>
+          {'{'}…{'}'}
         </span>
       );
     }
     if (typeof val === 'number') {
-      return <span style={{ fontWeight: 600, color: '#0f172a' }}>{val.toLocaleString()}</span>;
+      return <span style={{ color: '#2563eb', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>{val.toLocaleString()}</span>;
     }
     
     const str = String(val);
     return (
-      <span title={str} style={{ color: '#1e293b' }}>
-        {str.length > 45 ? str.slice(0, 45) + '…' : str}
+      <span title={str} style={{ color: '#0f172a', fontSize: '0.82rem' }}>
+        {str.length > 48 ? str.slice(0, 48) + '…' : str}
       </span>
     );
   };
@@ -849,34 +844,43 @@ export default function DatabasePage() {
                 </pre>
               </div>
             ) : (
-              /* DYNAMIC TABLE VIEW */
+              /* DYNAMIC TABLE VIEW — Neon-style minimal */
               <div>
-                <div style={{ overflowX: 'auto', maxHeight: 680 }}>
-                  <table style={{ width: '100%', fontSize: '0.84rem', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', fontSize: '0.82rem', borderCollapse: 'collapse', textAlign: 'left', fontFamily: 'var(--font-sans)' }}>
                     <thead>
-                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 1 }}>
-                        <th style={{ padding: '12px 14px', width: 48, fontWeight: 700, color: '#475569' }}>#</th>
+                      <tr style={{
+                        borderBottom: '1px solid #e2e8f0',
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 1,
+                        background: '#fafafa',
+                      }}>
+                        <th style={{ padding: '9px 16px', width: 48, fontFamily: 'var(--font-mono)', fontWeight: 500, fontSize: '0.72rem', color: '#94a3b8', letterSpacing: '0.04em' }}>#</th>
                         {columns.map(col => (
                           <th
                             key={col}
                             onClick={() => handleSort(col)}
                             style={{
-                              padding: '12px 14px',
-                              fontWeight: 700,
-                              color: sortField === col ? '#2563eb' : '#475569',
+                              padding: '9px 16px',
+                              fontFamily: 'var(--font-mono)',
+                              fontWeight: 500,
+                              fontSize: '0.72rem',
+                              letterSpacing: '0.04em',
+                              color: sortField === col ? '#2563eb' : '#64748b',
                               cursor: 'pointer',
                               whiteSpace: 'nowrap',
                               userSelect: 'none',
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                               <span>{col}</span>
-                              <ArrowUpDown size={12} color={sortField === col ? '#2563eb' : '#cbd5e1'} />
+                              <ArrowUpDown size={11} color={sortField === col ? '#2563eb' : '#cbd5e1'} />
                             </div>
                           </th>
                         ))}
-                        <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', whiteSpace: 'nowrap' }}>
-                          Actions
+                        <th style={{ padding: '9px 16px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 500, fontSize: '0.72rem', letterSpacing: '0.04em', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                          actions
                         </th>
                       </tr>
                     </thead>
@@ -886,31 +890,41 @@ export default function DatabasePage() {
                         return (
                           <tr
                             key={row.id || row._id || idx}
-                            style={{ borderBottom: '1px solid #f1f5f9' }}
-                            className="hover-row"
+                            style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.1s' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                           >
-                            <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: '0.78rem' }}>
+                            <td style={{ padding: '9px 16px', color: '#cbd5e1', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>
                               {globalIdx}
                             </td>
                             {columns.map(col => (
-                              <td key={col} style={{ padding: '11px 14px', maxWidth: 260 }}>
+                              <td key={col} style={{ padding: '9px 16px', maxWidth: 280, verticalAlign: 'middle' }}>
                                 {renderCellContent(row[col])}
                               </td>
                             ))}
-                            <td style={{ padding: '11px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '9px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <button
                                 onClick={() => setSelectedRecord(row)}
-                                className="btn btn-secondary"
                                 style={{
-                                  padding: '4px 10px',
-                                  fontSize: '0.75rem',
+                                  padding: '3px 10px',
+                                  fontSize: '0.72rem',
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: 4
+                                  gap: 4,
+                                  background: 'none',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: 5,
+                                  cursor: 'pointer',
+                                  color: '#475569',
+                                  fontWeight: 500,
+                                  fontFamily: 'var(--font-sans)',
+                                  transition: 'border-color 0.15s, color 0.15s',
                                 }}
+                                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#94a3b8'; (e.currentTarget as HTMLButtonElement).style.color = '#0f172a'; }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLButtonElement).style.color = '#475569'; }}
                               >
-                                <Eye size={12} />
-                                Details
+                                <Eye size={11} />
+                                view
                               </button>
                             </td>
                           </tr>
@@ -922,38 +936,63 @@ export default function DatabasePage() {
 
                 {/* Pagination Footer */}
                 <div style={{
-                  padding: '12px 18px',
+                  padding: '10px 16px',
                   borderTop: '1px solid #e2e8f0',
-                  background: '#f8fafc',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   flexWrap: 'wrap',
-                  gap: 12,
+                  gap: 8,
                 }}>
-                  <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
-                    Page <strong style={{ color: '#0f172a' }}>{page}</strong> of <strong style={{ color: '#0f172a' }}>{totalPages}</strong>
-                    {' '}· Showing records {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, processedData.length)} of {processedData.length}
-                  </div>
+                  <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+                    {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, processedData.length)} of {processedData.length} rows
+                  </span>
 
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <button
                       onClick={() => setPage(p => Math.max(1, p - 1))}
                       disabled={page <= 1}
-                      className="btn btn-secondary"
-                      style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4 }}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        background: 'none',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 5,
+                        cursor: page <= 1 ? 'not-allowed' : 'pointer',
+                        color: page <= 1 ? '#cbd5e1' : '#475569',
+                        fontFamily: 'var(--font-sans)',
+                        fontWeight: 500,
+                      }}
                     >
-                      <ChevronLeft size={14} />
-                      Previous
+                      <ChevronLeft size={13} />
+                      Prev
                     </button>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b', padding: '0 6px', fontFamily: 'var(--font-mono)' }}>
+                      {page} / {totalPages}
+                    </span>
                     <button
                       onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                       disabled={page >= totalPages}
-                      className="btn btn-secondary"
-                      style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4 }}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        background: 'none',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 5,
+                        cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+                        color: page >= totalPages ? '#cbd5e1' : '#475569',
+                        fontFamily: 'var(--font-sans)',
+                        fontWeight: 500,
+                      }}
                     >
                       Next
-                      <ChevronRight size={14} />
+                      <ChevronRight size={13} />
                     </button>
                   </div>
                 </div>

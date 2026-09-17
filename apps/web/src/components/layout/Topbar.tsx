@@ -204,7 +204,7 @@ function searchLocalEntities(q: string, filterTypes: string[] = [], flaggedOnly 
 }
 
 export default function Topbar() {
-  const { user, logout } = useAuth();
+  const { user, logout, managedUsers } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const pageTitle = getPageTitle(location.pathname);
@@ -478,6 +478,37 @@ export default function Topbar() {
       ? 'timeline'
       : (new URLSearchParams(location.search).get('tab') || 'details');
 
+  // Audit Logs user filter context
+  const isAuditPage = location.pathname === '/audit' || location.pathname.startsWith('/audit/');
+  const auditUserParam = isAuditPage ? new URLSearchParams(location.search).get('user') : null;
+  const [auditUserNameFromLog, setAuditUserNameFromLog] = useState<string | null>(null);
+
+  const matchedAuditUser = auditUserParam
+    ? managedUsers?.find(
+        u => u.username?.toLowerCase() === auditUserParam.toLowerCase() ||
+             u.id?.toLowerCase() === auditUserParam.toLowerCase()
+      ) || (user?.username?.toLowerCase() === auditUserParam.toLowerCase() ? user : null)
+    : null;
+
+  const auditUsername = matchedAuditUser?.username || auditUserParam;
+  const finalAuditName = matchedAuditUser?.fullName || auditUserNameFromLog;
+
+  useEffect(() => {
+    let mounted = true;
+    if (auditUserParam && !matchedAuditUser?.fullName) {
+      api.get(`/api/audit?limit=1&username=${encodeURIComponent(auditUserParam)}`)
+        .then(res => {
+          if (mounted && res.data?.logs?.[0]?.full_name) {
+            setAuditUserNameFromLog(res.data.logs[0].full_name);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setAuditUserNameFromLog(null);
+    }
+    return () => { mounted = false; };
+  }, [auditUserParam, matchedAuditUser?.fullName]);
+
   return (
     <header className="topbar">
       {/* Brand Logo */}
@@ -519,7 +550,7 @@ export default function Topbar() {
           title={`${user.fullName} · ${user.department ?? user.role}`}
         >
           {/* Avatar circle — shows photo if set, else initials */}
-          <div style={{
+          <div className="avatar-ring" style={{
             width: 35,
             height: 35,
             borderRadius: '50%',
@@ -532,7 +563,6 @@ export default function Topbar() {
             color: '#fff',
             flexShrink: 0,
             letterSpacing: '0.02em',
-            boxShadow: '0 0 0 2px rgba(124,58,237,0.25)',
             overflow: 'hidden',
           }}>
             {user.photoUrl
@@ -725,6 +755,44 @@ export default function Topbar() {
             }}
           >
             {entityListFilterType}
+          </span>
+        </div>
+      ) : isAuditPage && auditUserParam ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <span
+            onClick={() => navigate('/audit')}
+            style={{
+              color: 'var(--text-muted)',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+            title="Back to All Audit Logs"
+          >
+            Audit Logs
+          </span>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem', flexShrink: 0 }}>&gt;</span>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              color: 'var(--text-primary)',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ color: '#2563eb' }}>@{auditUsername}</span>
+            {finalAuditName && (
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.82rem' }}>
+                ({finalAuditName})
+              </span>
+            )}
           </span>
         </div>
       ) : (

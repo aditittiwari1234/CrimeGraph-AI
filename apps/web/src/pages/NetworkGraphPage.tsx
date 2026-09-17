@@ -133,7 +133,6 @@ export default function NetworkGraphPage() {
             'text-max-width': '90px',
             'text-wrap': 'ellipsis',
             'overlay-padding': '4px',
-            'box-shadow': '0 2px 8px rgba(0,0,0,0.15)',
           },
         },
         {
