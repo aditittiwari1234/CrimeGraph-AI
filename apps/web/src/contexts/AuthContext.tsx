@@ -61,9 +61,29 @@ const PROFILE_PHOTOS_KEY = 'cg_profile_photos'; // userId → base64
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+function getInitialUser(): User | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    try {
+      const photos = JSON.parse(localStorage.getItem(PROFILE_PHOTOS_KEY) || '{}');
+      if (photos[parsed.id]) {
+        return { ...parsed, photoUrl: photos[parsed.id] };
+      }
+    } catch { /* ignore */ }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(getInitialUser);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    // If we have a cached user, we do not block UI with a loading spinner
+    return !getInitialUser() && !!localStorage.getItem('accessToken');
+  });
   const [managedUsers, setManagedUsers] = useState<User[]>(() => {
     try {
       const stored = localStorage.getItem(MANAGED_USERS_KEY);
@@ -112,42 +132,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Restore session and sync users on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        setUser(hydratePhoto(JSON.parse(stored)));
-      } catch {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-    }
-
     const token = localStorage.getItem('accessToken');
     if (token) {
       api.get('/api/auth/me')
         .then(res => {
-          if (res.data) setUser(hydratePhoto(res.data));
+          if (res.data) {
+            const hydrated = hydratePhoto(res.data);
+            setUser(hydrated);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(hydrated));
+          }
         })
-        .catch(() => logout())
+        .catch((err) => {
+          // Only log out if backend explicitly rejected authentication with 401 or 403
+          const status = err?.response?.status;
+          if (status === 401 || status === 403) {
+            logout();
+          } else {
+            console.warn('Backend session verification skipped/failed, keeping current session:', err?.message);
+          }
+        })
         .finally(() => setIsLoading(false));
     } else {
       setIsLoading(false);
     }
 
-    refreshManagedUsers();
+    refreshManagedUsers().catch(() => {});
   }, [hydratePhoto, logout, refreshManagedUsers]);
 
   const login = async (username: string, password: string) => {
     try {
       const res = await api.post('/api/auth/login', { username, password });
       const { accessToken, refreshToken, user: userData } = res.data;
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', refreshToken);
+      if (accessToken) localStorage.setItem('accessToken', accessToken);
+      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
       const hydrated = hydratePhoto(userData);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(hydrated));
       setUser(hydrated);
       refreshManagedUsers().catch(() => {});
       return;
     } catch (apiErr: any) {
+      // Fallback for offline / network outage if credentials match demo credentials
+      const isNetworkError = !apiErr.response || apiErr.code === 'ERR_NETWORK' || apiErr.message?.includes('Network Error');
+      if (isNetworkError) {
+        const demoUser = INITIAL_DEMO_USERS.find(
+          u => (u.username.toLowerCase() === username.toLowerCase() || u.email.toLowerCase() === username.toLowerCase())
+        );
+        if (demoUser && (password === demoUser.password || password === 'Demo@1234')) {
+          const { password: _pw, ...cleanUser } = demoUser;
+          const hydrated = hydratePhoto(cleanUser);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(hydrated));
+          setUser(hydrated);
+          return;
+        }
+      }
+
       const msg = apiErr?.response?.data?.error || apiErr?.message || 'Login failed. Please check your credentials.';
       throw new Error(msg);
     }

@@ -1,6 +1,25 @@
 /* CrimeGraph AI — Global Design System (Light Theme) */
 
+/* GitHub Mona Sans Variable Font (Official GitHub Assets) */
+@font-face {
+  font-family: 'Mona Sans';
+  src:
+    url('https://support-assets.githubassets.com/assets/MonaSansVF-ae086fdbb5bb5dd038b6f4be86906fee0237944047cd11420497999b12d2a7d5.woff2') format('woff2 supports variations'),
+    url('https://support-assets.githubassets.com/assets/MonaSansVF-ae086fdbb5bb5dd038b6f4be86906fee0237944047cd11420497999b12d2a7d5.woff2') format('woff2');
+  font-weight: 200 900;
+  font-stretch: 75% 125%;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
+  /* Typography - GitHub Mona Sans System Stack */
+  --font-sans: "Mona Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --fontStack-sansSerif: var(--font-sans);
+  --fontStack-sansSerifDisplay: var(--font-sans);
+  --fontStack-system: var(--font-sans);
+
   /* Core Backgrounds */
   --bg-primary: #f0f4f8;
   --bg-secondary: #e8edf3;
@@ -66,10 +85,6 @@
   --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
-
   /* Shadows */
   --shadow-sm: none;
   --shadow-md: none;
@@ -119,6 +134,13 @@ body {
   line-height: 1.5;
   height: 100%;
   overflow: hidden;
+}
+
+input,
+button,
+select,
+textarea {
+  font-family: inherit;
 }
 
 #root {
@@ -306,6 +328,7 @@ pre {
     opacity: 0;
     transform: scale(0.96);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -666,7 +689,7 @@ pre {
 .search-input-wrapper .form-input,
 .search-input-wrapper .input {
   padding-left: 36px;
-  height: 38px;
+  height: 34px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #ffffff;

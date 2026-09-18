@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Plus, Pencil, Trash2, Camera, X, Save, Search, UserCheck, Users,
   Shield, ChevronDown, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle,
-  Copy, Check, Share2, FileText, Mail
+  Copy, Check, FileText, Mail
 } from 'lucide-react';
 import { useAuth, type User } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -18,10 +18,10 @@ const ROLES = [
 ];
 
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
-  administrator:      { bg: 'rgba(220,38,38,0.1)',   text: '#dc2626' },
-  senior_investigator:{ bg: 'rgba(124,58,237,0.1)', text: '#7c3aed' },
-  investigator:       { bg: 'rgba(37,99,235,0.1)',   text: '#2563eb' },
-  analyst:            { bg: 'rgba(5,150,105,0.1)',   text: '#059669' },
+  administrator: { bg: 'rgba(220,38,38,0.1)', text: '#dc2626' },
+  senior_investigator: { bg: 'rgba(124,58,237,0.1)', text: '#7c3aed' },
+  investigator: { bg: 'rgba(37,99,235,0.1)', text: '#2563eb' },
+  analyst: { bg: 'rgba(5,150,105,0.1)', text: '#059669' },
 };
 
 const DEPARTMENTS = [
@@ -37,19 +37,19 @@ const DEPARTMENTS = [
 ];
 
 const USER_COLUMNS = [
-  { key: 'id',           type: 'varchar(64)',   sortable: true },
-  { key: 'username',     type: 'varchar(100)',  sortable: true },
-  { key: 'full_name',    type: 'varchar(255)',  sortable: true },
-  { key: 'role',         type: 'varchar(50)',   sortable: true },
-  { key: 'department',   type: 'varchar(255)',  sortable: true },
-  { key: 'badge_number', type: 'varchar(50)',   sortable: true },
-  { key: 'email',        type: 'varchar(255)',  sortable: true },
-  { key: 'is_active',    type: 'boolean',       sortable: true },
-  { key: 'last_login',   type: 'timestamptz',   sortable: true },
-  { key: 'created_at',   type: 'timestamptz',   sortable: true },
-  { key: 'updated_at',   type: 'timestamptz',   sortable: true },
-  { key: 'audit_logs',   type: 'int',           sortable: true },
-  { key: 'actions',      type: 'actions',       sortable: false },
+  { key: 'id', type: 'varchar(64)', sortable: true },
+  { key: 'username', type: 'varchar(100)', sortable: true },
+  { key: 'full_name', type: 'varchar(255)', sortable: true },
+  { key: 'role', type: 'varchar(50)', sortable: true },
+  { key: 'department', type: 'varchar(255)', sortable: true },
+  { key: 'badge_number', type: 'varchar(50)', sortable: true },
+  { key: 'email', type: 'varchar(255)', sortable: true },
+  { key: 'is_active', type: 'boolean', sortable: true },
+  { key: 'last_login', type: 'timestamptz', sortable: true },
+  { key: 'created_at', type: 'timestamptz', sortable: true },
+  { key: 'updated_at', type: 'timestamptz', sortable: true },
+  { key: 'audit_logs', type: 'int', sortable: true },
+  { key: 'actions', type: 'actions', sortable: false },
 ];
 
 function formatHeader(key: string): string {
@@ -171,7 +171,7 @@ function UserFormModal({ initial, onSave, onClose }: UserFormModalProps) {
 
   const rc = ROLE_COLORS[form.role] ?? { bg: 'rgba(100,100,100,0.1)', text: '#64748b' };
 
-  return (
+  return createPortal(
     <>
       {cropSrc && (
         <ImageCropModal
@@ -434,7 +434,8 @@ function UserFormModal({ initial, onSave, onClose }: UserFormModalProps) {
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 
@@ -492,6 +493,19 @@ export default function UserManagementPage() {
     });
   };
 
+  const openEdit = (u: User) => {
+    setEditTarget({
+      id: u.id,
+      username: u.username,
+      fullName: u.fullName,
+      email: u.email || '',
+      role: u.role,
+      department: u.department ?? '',
+      badgeNumber: u.badgeNumber ?? '',
+      photoUrl: u.photoUrl,
+    });
+  };
+
   const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
     if (!contextMenu) return [];
     const { targetUser, colKey, colValue } = contextMenu;
@@ -516,30 +530,33 @@ export default function UserManagementPage() {
 
     if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
       const displayVal = String(colValue);
-      const truncated = displayVal.length > 25 ? displayVal.slice(0, 25) + '...' : displayVal;
+      const truncated = displayVal.length > 30 ? displayVal.slice(0, 30) + '...' : displayVal;
       items.push({
-        label: `Copy ${formatHeader(colKey)}`,
+        label: `Copy Cell Value (${formatHeader(colKey)})`,
         sublabel: `"${truncated}"`,
         icon: Copy,
         iconColor: '#059669',
         onClick: () => {
           navigator.clipboard.writeText(displayVal);
-          showToast(`Copied ${formatHeader(colKey)} to clipboard!`);
+          showToast(`Copied ${formatHeader(colKey)}: "${truncated}" to clipboard!`);
         },
       });
     }
 
-    items.push({
-      label: 'Copy Username',
-      sublabel: `@${targetUser.username}`,
-      icon: Copy,
-      onClick: () => {
-        navigator.clipboard.writeText(targetUser.username);
-        showToast(`Copied @${targetUser.username} to clipboard!`);
-      },
-    });
+    if (colKey !== 'username') {
+      items.push({
+        label: 'Copy Username',
+        sublabel: `@${targetUser.username}`,
+        icon: Copy,
+        onClick: () => {
+          navigator.clipboard.writeText(targetUser.username);
+          showToast(`Copied @${targetUser.username} to clipboard!`);
+        },
+        dividerAfter: colKey === 'email' || (!targetUser.email && targetUser.id !== currentUser?.id),
+      });
+    }
 
-    if (targetUser.email) {
+    if (targetUser.email && colKey !== 'email') {
       items.push({
         label: 'Copy Email Address',
         sublabel: targetUser.email,
@@ -548,28 +565,9 @@ export default function UserManagementPage() {
           navigator.clipboard.writeText(targetUser.email);
           showToast('Copied email address to clipboard!');
         },
+        dividerAfter: targetUser.id !== currentUser?.id,
       });
     }
-
-    items.push({
-      label: 'Copy User ID',
-      sublabel: targetUser.id,
-      icon: Copy,
-      onClick: () => {
-        navigator.clipboard.writeText(targetUser.id);
-        showToast('Copied User ID!');
-      },
-    });
-
-    items.push({
-      label: 'Copy User as JSON',
-      icon: Share2,
-      onClick: () => {
-        navigator.clipboard.writeText(JSON.stringify(targetUser, null, 2));
-        showToast('Full user record copied as JSON!');
-      },
-      dividerAfter: targetUser.id !== currentUser?.id,
-    });
 
     if (targetUser.id !== currentUser?.id) {
       items.push({
@@ -898,11 +896,11 @@ export default function UserManagementPage() {
 
       {/* Filter, search bar and pagination above the table */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="search-input-wrapper" style={{ flex: 1, minWidth: 260 }}>
+        <div className="search-input-wrapper" style={{ width: 280, maxWidth: '100%' }}>
           <Search size={15} className="search-icon" />
           <input
             className="form-input"
-            placeholder="Search users by name, username, email, department…"
+            placeholder="Search users by name, username, email…"
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
           />
@@ -916,7 +914,7 @@ export default function UserManagementPage() {
             style={{
               padding: '8px 32px 8px 12px',
               fontSize: '0.82rem',
-              height: 38,
+              height: 34,
               borderRadius: 8,
               border: '1px solid #cbd5e1'
             }}
@@ -1059,12 +1057,18 @@ export default function UserManagementPage() {
                     </td>
 
                     {/* username */}
-                    <td style={{ fontWeight: 600, color: '#0f172a', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'username', `@${u.username}`)}
+                      style={{ fontWeight: 600, color: '#0f172a', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       @{u.username}
                     </td>
 
                     {/* full_name with avatar */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'full_name', u.fullName)}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Avatar user={u} size={26} />
                         <span style={{ fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap' }}>{u.fullName}</span>
@@ -1077,33 +1081,48 @@ export default function UserManagementPage() {
                     </td>
 
                     {/* role */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'role', ROLES.find(r => r.value === u.role)?.label ?? u.role)}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       <span style={{ padding: '2px 8px', borderRadius: 12, background: rc.bg, color: rc.text, fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
                         {ROLES.find(r => r.value === u.role)?.label ?? u.role}
                       </span>
                     </td>
 
                     {/* department */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'department', u.department ?? '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       <span title={u.department} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 220 }}>
                         {u.department ?? <span className="cell-null">NULL</span>}
                       </span>
                     </td>
 
                     {/* badge_number */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'badge_number', u.badgeNumber ?? '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       {u.badgeNumber ?? <span className="cell-null">NULL</span>}
                     </td>
 
                     {/* email */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'email', u.email ?? '')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       <span title={u.email} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 200 }}>
                         {u.email}
                       </span>
                     </td>
 
                     {/* is_active */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'is_active', u.isActive !== false ? 'Active' : 'Inactive')}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       <span style={{ color: u.isActive !== false ? '#16a34a' : '#dc2626', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                         <span style={{ width: 6, height: 6, borderRadius: '50%', background: u.isActive !== false ? '#16a34a' : '#dc2626' }}></span>
                         {u.isActive !== false ? 'true' : 'false'}
@@ -1111,22 +1130,34 @@ export default function UserManagementPage() {
                     </td>
 
                     {/* last_login */}
-                    <td style={{ color: '#64748b', fontSize: '0.78rem', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'last_login', formatTimestamp(u.lastLogin))}
+                      style={{ color: '#64748b', fontSize: '0.78rem', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       {formatTimestamp(u.lastLogin)}
                     </td>
 
                     {/* created_at */}
-                    <td style={{ color: '#64748b', fontSize: '0.78rem', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'created_at', formatTimestamp((u as any).createdAt))}
+                      style={{ color: '#64748b', fontSize: '0.78rem', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       {formatTimestamp((u as any).createdAt)}
                     </td>
 
                     {/* updated_at */}
-                    <td style={{ color: '#64748b', fontSize: '0.78rem', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'updated_at', formatTimestamp((u as any).updatedAt))}
+                      style={{ color: '#64748b', fontSize: '0.78rem', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}
+                    >
                       {formatTimestamp((u as any).updatedAt)}
                     </td>
 
                     {/* audit_logs */}
-                    <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <td
+                      onContextMenu={ev => handleCellContextMenu(ev, u, 'audit_logs', `${u.auditLogsCount ?? 0} logs`)}
+                      style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}
+                    >
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1155,7 +1186,7 @@ export default function UserManagementPage() {
                     <td style={{ borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         <button
-                          onClick={() => setEditTarget({ ...u, department: u.department ?? '', badgeNumber: u.badgeNumber ?? '', photoUrl: u.photoUrl })}
+                          onClick={() => openEdit(u)}
                           style={{
                             padding: '4px 8px', borderRadius: 5, background: '#eff6ff',
                             border: '1px solid #bfdbfe', color: '#2563eb', cursor: 'pointer',

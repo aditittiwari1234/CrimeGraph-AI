@@ -69,24 +69,46 @@ router.post(
       // Fallback for built-in admin or demo accounts
       if (!user && isAdminUser && isStandardAdminPassword) {
         user = {
-          id: 'admin-001',
+          id: 'USR-001',
           username: 'admin',
-          email: 'admin@ncrb.gov.in',
+          email: 'admin@crimegraph.ai',
           full_name: 'System Administrator',
           role: 'administrator',
           badge_number: 'ADMIN-001',
-          department: 'NCRB HQ',
+          department: 'CrimeGraph AI Master Operations',
           last_login: new Date(),
         };
       } else if (!user && username === 'singh_si' && ['Demo@1234', 'password'].includes(password)) {
         user = {
-          id: 'si-001',
+          id: 'USR-002',
           username: 'singh_si',
-          email: 'singh@ncrb.gov.in',
-          full_name: 'Inspector A.K. Singh',
+          email: 'inspector.singh@ncrb.gov.in',
+          full_name: 'Inspector Rajendra Singh',
           role: 'senior_investigator',
-          badge_number: 'SI-2024-001',
-          department: 'Cyber Crime Wing',
+          badge_number: 'SI-2024-042',
+          department: 'NCRB — Women Safety & Special Crimes',
+          last_login: new Date(),
+        };
+      } else if (!user && username === 'verma_inv' && ['Demo@1234', 'password'].includes(password)) {
+        user = {
+          id: 'USR-003',
+          username: 'verma_inv',
+          email: 'investigator.verma@ncrb.gov.in',
+          full_name: 'Sub-Inspector Priya Verma',
+          role: 'investigator',
+          badge_number: 'INV-2024-118',
+          department: 'NCRB — Organised Crime Syndicate Unit',
+          last_login: new Date(),
+        };
+      } else if (!user && username === 'analyst_gupta' && ['Demo@1234', 'password'].includes(password)) {
+        user = {
+          id: 'USR-004',
+          username: 'analyst_gupta',
+          email: 'analyst.gupta@ncrb.gov.in',
+          full_name: 'Data Analyst Suresh Gupta',
+          role: 'analyst',
+          badge_number: 'ANA-2024-023',
+          department: 'NCRB — Cyber & Financial Intelligence Cell',
           last_login: new Date(),
         };
       }
@@ -218,22 +240,36 @@ router.get('/me', async (req: Request, res: Response): Promise<void> => {
     const token = authHeader.substring(7);
     const payload = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret') as jwt.JwtPayload;
 
-    const result = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [payload.sub]);
-    if (result.rows.length === 0) {
-      res.status(404).json({ error: 'User not found' });
-      return;
+    try {
+      const result = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [payload.sub]);
+      if (result.rows.length > 0) {
+        const user = result.rows[0];
+        res.json({
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          fullName: user.full_name,
+          role: user.role,
+          badgeNumber: user.badge_number,
+          department: user.department,
+          lastLogin: user.last_login,
+        });
+        return;
+      }
+    } catch (dbErr) {
+      logger.warn('Error querying DB in /me:', dbErr);
     }
 
-    const user = result.rows[0];
+    // If verified token exists, return user claims from the valid JWT
     res.json({
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      fullName: user.full_name,
-      role: user.role,
-      badgeNumber: user.badge_number,
-      department: user.department,
-      lastLogin: user.last_login,
+      id: payload.sub,
+      username: payload.username,
+      email: payload.email,
+      fullName: payload.fullName || payload.username,
+      role: payload.role || 'investigator',
+      badgeNumber: payload.badgeNumber || payload.sub,
+      department: payload.department || 'Investigation Bureau',
+      lastLogin: new Date(),
     });
   } catch {
     res.status(401).json({ error: 'Invalid token' });
