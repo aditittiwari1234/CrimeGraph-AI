@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus, Pencil, Trash2, Camera, X, Save, Search, UserCheck, Users,
-  Shield, ChevronDown, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle,
+  Shield, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle,
   Copy, Check, FileText, Mail
 } from 'lucide-react';
 import { useAuth, type User } from '../contexts/AuthContext';
@@ -366,20 +366,18 @@ function UserFormModal({ initial, onSave, onClose }: UserFormModalProps) {
             <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted, #64748b)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>
               Role
             </label>
-            <div style={{ position: 'relative' }}>
-              <select
-                value={form.role}
-                onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                style={{
-                  width: '100%', boxSizing: 'border-box', padding: '8px 32px 8px 10px',
-                  background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 7,
-                  color: '#0f172a', fontSize: '0.85rem', outline: 'none', appearance: 'none',
-                }}
-              >
-                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
-              <ChevronDown size={13} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
-            </div>
+            <select
+              className="form-select"
+              value={form.role}
+              onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                border: '1px solid #cbd5e1', borderRadius: 7,
+                color: '#0f172a', fontSize: '0.85rem',
+              }}
+            >
+              {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
           </div>
 
           {/* Department */}
@@ -387,21 +385,19 @@ function UserFormModal({ initial, onSave, onClose }: UserFormModalProps) {
             <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted, #64748b)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>
               Department
             </label>
-            <div style={{ position: 'relative' }}>
-              <select
-                value={form.department}
-                onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
-                style={{
-                  width: '100%', boxSizing: 'border-box', padding: '8px 32px 8px 10px',
-                  background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 7,
-                  color: '#0f172a', fontSize: '0.85rem', outline: 'none', appearance: 'none',
-                }}
-              >
-                <option value="">Select department…</option>
-                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-              <ChevronDown size={13} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
-            </div>
+            <select
+              className="form-select"
+              value={form.department}
+              onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                border: '1px solid #cbd5e1', borderRadius: 7,
+                color: '#0f172a', fontSize: '0.85rem',
+              }}
+            >
+              <option value="">Select department…</option>
+              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
           </div>
 
           {/* Actions */}
@@ -896,7 +892,7 @@ export default function UserManagementPage() {
 
       {/* Filter, search bar and pagination above the table */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="search-input-wrapper" style={{ width: 280, maxWidth: '100%' }}>
+        <div className="search-input-wrapper" style={{ width: 280, maxWidth: '100%', flexShrink: 0 }}>
           <Search size={15} className="search-icon" />
           <input
             className="form-input"
@@ -906,24 +902,23 @@ export default function UserManagementPage() {
           />
         </div>
 
-        <div style={{ position: 'relative' }}>
-          <select
-            className="form-select"
-            value={roleFilter}
-            onChange={e => { setRoleFilter(e.target.value); setPage(1); }}
-            style={{
-              padding: '8px 32px 8px 12px',
-              fontSize: '0.82rem',
-              height: 34,
-              borderRadius: 8,
-              border: '1px solid #cbd5e1'
-            }}
-          >
-            <option value="">All Roles</option>
-            {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-          </select>
-          <ChevronDown size={13} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
-        </div>
+        <select
+          className="form-select"
+          value={roleFilter}
+          onChange={e => { setRoleFilter(e.target.value); setPage(1); }}
+          style={{
+            width: 175,
+            flexShrink: 0,
+            fontSize: '0.82rem',
+            height: 34,
+            borderRadius: 8,
+            border: '1px solid #cbd5e1',
+            boxSizing: 'border-box'
+          }}
+        >
+          <option value="">All Roles</option>
+          {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+        </select>
 
         {roleFilter && (
           <button className="btn btn-secondary btn-sm" onClick={() => setRoleFilter('')}>
