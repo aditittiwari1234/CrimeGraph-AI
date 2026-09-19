@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Plus, Pencil, Trash2, Camera, X, Save, Search, UserCheck, Users,
   Shield, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle,
-  Copy, Check, FileText, Mail
+  Copy, Check, FileText, Mail, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useAuth, type User } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -435,8 +435,6 @@ function UserFormModal({ initial, onSave, onClose }: UserFormModalProps) {
   );
 }
 
-const PAGE_SIZE = 15;
-
 export default function UserManagementPage() {
   const { user: currentUser, managedUsers, addManagedUser, updateManagedUser, deleteManagedUser, refreshManagedUsers } = useAuth();
   const navigate = useNavigate();
@@ -449,10 +447,11 @@ export default function UserManagementPage() {
   const [syncNotice, setSyncNotice] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Table Sorting and Pagination (Entities-style)
+  // Table Sorting and Pagination (Audit Logs style)
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(20);
 
   // Right-click context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -623,10 +622,14 @@ export default function UserManagementPage() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await refreshManagedUsers();
+    const result = await refreshManagedUsers();
     setIsRefreshing(false);
-    setSyncNotice('Users synced with PostgreSQL database');
-    setTimeout(() => setSyncNotice(''), 4000);
+    if (result.success) {
+      setSyncNotice(`Users successfully synced with PostgreSQL database (${result.count} accounts active)`);
+    } else {
+      setSyncNotice(`⚠️ Sync failed: ${result.error || 'Database connection error'}`);
+    }
+    setTimeout(() => setSyncNotice(''), 5000);
   };
 
   const handleSort = (key: string) => {
@@ -676,8 +679,18 @@ export default function UserManagementPage() {
     return result;
   }, [managedUsers, search, roleFilter, sortField, sortOrder]);
 
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(() => {
+    if (pageSize === -1) return filtered;
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  // Reset page when filters or pageSize change
+  useEffect(() => {
+    setPage(1);
+  }, [search, roleFilter, pageSize]);
 
   // Measure and sync table scrollWidth for the sticky horizontal scrollbar
   useEffect(() => {
@@ -882,10 +895,12 @@ export default function UserManagementPage() {
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '10px 16px', borderRadius: 8,
-          background: '#eff6ff', border: '1px solid #bfdbfe',
-          color: '#1d4ed8', fontSize: '0.85rem', fontWeight: 500, marginBottom: 18
+          background: syncNotice.startsWith('⚠️') ? '#fef2f2' : '#eff6ff',
+          border: syncNotice.startsWith('⚠️') ? '1px solid #fecaca' : '1px solid #bfdbfe',
+          color: syncNotice.startsWith('⚠️') ? '#b91c1c' : '#1d4ed8',
+          fontSize: '0.85rem', fontWeight: 500, marginBottom: 18
         }}>
-          <CheckCircle2 size={16} />
+          {syncNotice.startsWith('⚠️') ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
           <span>{syncNotice}</span>
         </div>
       )}
@@ -926,66 +941,60 @@ export default function UserManagementPage() {
           </button>
         )}
 
-        {/* Row count & Next/Prev pagination buttons above table */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'var(--font-mono)' }}>
-            {filtered.length > 0 ? ((page - 1) * PAGE_SIZE) + 1 : 0}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} rows
+        {/* Row Counts, Page Size & Pagination Controls above table */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14, fontSize: '0.8rem', color: '#64748b', flexWrap: 'wrap' }}>
+          <span>
+            {filtered.length > 0
+              ? `${pageSize === -1 ? 1 : ((page - 1) * pageSize) + 1}–${pageSize === -1 ? filtered.length : Math.min(page * pageSize, filtered.length)} of ${filtered.length} rows`
+              : '0 rows'}
+            {filtered.length !== managedUsers.length && ` (from ${managedUsers.length})`}
           </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage(1)}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: '#94a3b8' }}>Per page:</span>
+            <select
+              value={pageSize}
+              onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
               style={{
-                padding: '4px 8px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page <= 1 ? 'not-allowed' : 'pointer',
-                color: page <= 1 ? '#cbd5e1' : '#334155', fontWeight: 600
-              }}
-              title="First Page"
-            >
-              «
-            </button>
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage(p => p - 1)}
-              style={{
-                padding: '4px 10px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page <= 1 ? 'not-allowed' : 'pointer',
-                color: page <= 1 ? '#cbd5e1' : '#334155', fontWeight: 600
+                height: 28, padding: '0 6px', fontSize: '0.75rem',
+                background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 5,
+                color: '#334155', cursor: 'pointer', outline: 'none'
               }}
             >
-              Prev
-            </button>
-            <span style={{ fontSize: '0.78rem', color: '#334155', padding: '0 6px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-              {page} / {totalPages}
-            </span>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
-              style={{
-                padding: '4px 10px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-                color: page >= totalPages ? '#cbd5e1' : '#334155', fontWeight: 600
-              }}
-            >
-              Next
-            </button>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage(totalPages)}
-              style={{
-                padding: '4px 8px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-                color: page >= totalPages ? '#cbd5e1' : '#334155', fontWeight: 600
-              }}
-              title="Last Page"
-            >
-              »
-            </button>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={-1}>All ({managedUsers.length})</option>
+            </select>
           </div>
+
+          {pageSize !== -1 && totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
+                title="Previous Page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+
+              <span style={{ fontSize: '0.78rem', color: '#334155', padding: '0 4px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                {page} / {totalPages}
+              </span>
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
+                title="Next Page"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

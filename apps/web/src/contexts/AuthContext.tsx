@@ -28,7 +28,7 @@ interface AuthContextType {
   addManagedUser: (u: User & { password?: string }) => Promise<User>;
   updateManagedUser: (id: string, updates: Partial<User> & { password?: string }) => Promise<User>;
   deleteManagedUser: (id: string) => Promise<void>;
-  refreshManagedUsers: () => Promise<void>;
+  refreshManagedUsers: () => Promise<{ success: boolean; count?: number; error?: string }>;
 }
 
 // ── Demo users for offline / no-backend mode ──────────────────────────────────
@@ -118,15 +118,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Fetch users directly from PostgreSQL database
-  const refreshManagedUsers = useCallback(async () => {
+  const refreshManagedUsers = useCallback(async (): Promise<{ success: boolean; count?: number; error?: string }> => {
     try {
       const res = await api.get('/api/auth/users');
       if (res.data?.users && Array.isArray(res.data.users)) {
         const hydratedList = res.data.users.map((u: any) => hydratePhoto(u));
         setManagedUsers(hydratedList);
+        return { success: true, count: hydratedList.length };
       }
-    } catch {
-      // Keep cached users if backend is unreachable
+      return { success: false, error: 'Database did not return user records' };
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'API server offline or unreachable';
+      console.warn('Failed to sync users from PostgreSQL database:', msg);
+      return { success: false, error: msg };
     }
   }, [hydratePhoto]);
 

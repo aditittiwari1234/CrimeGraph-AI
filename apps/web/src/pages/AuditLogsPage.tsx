@@ -629,7 +629,7 @@ export default function AuditLogsPage() {
           </span>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Per page:</span>
+            <span style={{ color: '#94a3b8' }}>Per page:</span>
             <select
               value={pageSize}
               onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
