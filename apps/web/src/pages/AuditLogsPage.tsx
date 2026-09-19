@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, RefreshCw, ShieldCheck, Copy, Check, Eye, X,
-  ChevronLeft, ChevronRight, Filter, Database, Hash, User,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Filter, Database, Hash, User,
   ExternalLink, Info, UserCheck, Shield
 } from 'lucide-react';
 import api from '../lib/api';
 import TableContextMenu, { type ContextMenuItem } from '../components/common/TableContextMenu';
+import InlinePageNav from '../components/common/InlinePageNav';
 
 interface AuditLog {
   id: string;
@@ -651,25 +652,43 @@ export default function AuditLogsPage() {
               <button
                 className="btn btn-secondary btn-sm"
                 disabled={page <= 1}
+                onClick={() => setPage(1)}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="First Page"
+              >
+                <ChevronsLeft size={14} />
+              </button>
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page <= 1}
                 onClick={() => setPage(p => Math.max(1, p - 1))}
-                style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
                 title="Previous Page"
               >
                 <ChevronLeft size={14} />
               </button>
 
-              <span style={{ fontSize: '0.78rem', color: '#334155', padding: '0 4px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                {page} / {totalPages}
-              </span>
+              <InlinePageNav page={page} totalPages={totalPages} onPageChange={setPage} />
 
               <button
                 className="btn btn-secondary btn-sm"
                 disabled={page >= totalPages}
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
                 title="Next Page"
               >
                 <ChevronRight size={14} />
+              </button>
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(totalPages)}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="Last Page"
+              >
+                <ChevronsRight size={14} />
               </button>
             </div>
           )}

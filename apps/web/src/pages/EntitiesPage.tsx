@@ -5,11 +5,12 @@ import {
   Search, Users, Phone, Truck, Building2, CreditCard, MapPin,
   Flag, RefreshCw, CheckCircle2, Database, AlertCircle,
   ExternalLink, Network, Copy, Check, Filter, Info,
-  Layers, ChevronLeft, ChevronRight, FileText, ShieldAlert,
+  Layers, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileText, ShieldAlert,
   FileCode, Activity, Eye, AlertTriangle
 } from 'lucide-react';
 import { useDatabases } from '../contexts/DatabaseContext';
 import TableContextMenu, { type ContextMenuItem } from '../components/common/TableContextMenu';
+import InlinePageNav from '../components/common/InlinePageNav';
 
 // Fast in-memory and session cache for verified live database entities
 let memoryEntitiesCache: Record<string, any[]> | null = null;
@@ -24,23 +25,23 @@ function getInitialCachedData(): Record<string, any[]> | null {
       memoryEntitiesCache = parsed;
       return parsed;
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; icon: any; tableKey?: string }> = {
-  Person:       { label: 'Persons',       color: '#2563eb', icon: Users,         tableKey: 'persons' },
-  Phone:        { label: 'Phones',        color: '#16a34a', icon: Phone,         tableKey: 'cdr_records' },
-  Vehicle:      { label: 'Vehicles',      color: '#ea580c', icon: Truck,         tableKey: 'vehicles' },
-  Organization: { label: 'Organisations', color: '#7c3aed', icon: Building2,     tableKey: 'organisations' },
-  Account:      { label: 'Accounts',      color: '#ca8a04', icon: CreditCard,    tableKey: 'bank_accounts' },
-  Location:     { label: 'Locations',     color: '#dc2626', icon: MapPin,        tableKey: 'locations' },
-  Case:         { label: 'Cases / FIRs',  color: '#0891b2', icon: FileText,      tableKey: 'fir_records' },
-  Evidence:     { label: 'Evidence',      color: '#4f46e5', icon: ShieldAlert,   tableKey: 'evidence_ledger' },
-  Document:     { label: 'Documents',     color: '#475569', icon: FileCode,      tableKey: 'documents' },
-  Transaction:  { label: 'Transactions',  color: '#d97706', icon: Activity,      tableKey: 'financial_transactions' },
-  Surveillance: { label: 'Surveillance',  color: '#0284c7', icon: Eye,           tableKey: 'surveillance_reports' },
-  Alert:        { label: 'Alerts',        color: '#e11d48', icon: AlertTriangle,  tableKey: 'alerts' },
+  Person: { label: 'Persons', color: '#2563eb', icon: Users, tableKey: 'persons' },
+  Phone: { label: 'Phones', color: '#16a34a', icon: Phone, tableKey: 'cdr_records' },
+  Vehicle: { label: 'Vehicles', color: '#ea580c', icon: Truck, tableKey: 'vehicles' },
+  Organization: { label: 'Organisations', color: '#7c3aed', icon: Building2, tableKey: 'organisations' },
+  Account: { label: 'Accounts', color: '#ca8a04', icon: CreditCard, tableKey: 'bank_accounts' },
+  Location: { label: 'Locations', color: '#dc2626', icon: MapPin, tableKey: 'locations' },
+  Case: { label: 'Cases / FIRs', color: '#0891b2', icon: FileText, tableKey: 'fir_records' },
+  Evidence: { label: 'Evidence', color: '#4f46e5', icon: ShieldAlert, tableKey: 'evidence_ledger' },
+  Document: { label: 'Documents', color: '#475569', icon: FileCode, tableKey: 'documents' },
+  Transaction: { label: 'Transactions', color: '#d97706', icon: Activity, tableKey: 'financial_transactions' },
+  Surveillance: { label: 'Surveillance', color: '#0284c7', icon: Eye, tableKey: 'surveillance_reports' },
+  Alert: { label: 'Alerts', color: '#e11d48', icon: AlertTriangle, tableKey: 'alerts' },
 };
 
 const FALLBACK_PALETTE = ['#2563eb', '#16a34a', '#ea580c', '#7c3aed', '#ca8a04', '#dc2626', '#0891b2', '#db2777', '#4f46e5', '#059669', '#d97706', '#0284c7'];
@@ -60,93 +61,93 @@ function getTypeConfig(type: string): { label: string; color: string; icon: any 
 // Precise column schemas matching the connected PostgreSQL database
 const KNOWN_COLUMNS: Record<string, { key: string; type: string; sortable?: boolean }[]> = {
   Person: [
-    { key: 'id',           type: 'varchar(32)',  sortable: true },
-    { key: 'name',         type: 'varchar(200)', sortable: true },
-    { key: 'aliases',      type: 'varchar(100)', sortable: true },
-    { key: 'age',          type: 'int',          sortable: true },
-    { key: 'gender',       type: 'varchar(10)' },
+    { key: 'id', type: 'varchar(32)', sortable: true },
+    { key: 'name', type: 'varchar(200)', sortable: true },
+    { key: 'aliases', type: 'varchar(100)', sortable: true },
+    { key: 'age', type: 'int', sortable: true },
+    { key: 'gender', type: 'varchar(10)' },
     { key: 'aadhaar_hash', type: 'varchar(20)' },
-    { key: 'pan',          type: 'varchar(10)' },
-    { key: 'occupation',   type: 'varchar(100)', sortable: true },
-    { key: 'cluster',      type: 'varchar(10)' },
-    { key: 'city',         type: 'varchar(100)', sortable: true },
-    { key: 'state',        type: 'varchar(100)', sortable: true },
-    { key: 'risk_score',   type: 'numeric',      sortable: true },
-    { key: 'status',       type: 'varchar(30)',  sortable: true },
-    { key: 'notes',        type: 'text' },
+    { key: 'pan', type: 'varchar(10)' },
+    { key: 'occupation', type: 'varchar(100)', sortable: true },
+    { key: 'cluster', type: 'varchar(10)' },
+    { key: 'city', type: 'varchar(100)', sortable: true },
+    { key: 'state', type: 'varchar(100)', sortable: true },
+    { key: 'risk_score', type: 'numeric', sortable: true },
+    { key: 'status', type: 'varchar(30)', sortable: true },
+    { key: 'notes', type: 'text' },
   ],
   Vehicle: [
-    { key: 'id',                 type: 'varchar(32)',  sortable: true },
-    { key: 'license_plate',      type: 'varchar(20)',  sortable: true },
-    { key: 'vehicle_type',       type: 'varchar(50)' },
-    { key: 'make',               type: 'varchar(50)' },
-    { key: 'model',              type: 'varchar(50)' },
-    { key: 'color',              type: 'varchar(30)' },
-    { key: 'year',               type: 'int',          sortable: true },
+    { key: 'id', type: 'varchar(32)', sortable: true },
+    { key: 'license_plate', type: 'varchar(20)', sortable: true },
+    { key: 'vehicle_type', type: 'varchar(50)' },
+    { key: 'make', type: 'varchar(50)' },
+    { key: 'model', type: 'varchar(50)' },
+    { key: 'color', type: 'varchar(30)' },
+    { key: 'year', type: 'int', sortable: true },
     { key: 'registration_state', type: 'varchar(50)' },
-    { key: 'registered_owner',   type: 'varchar(200)', sortable: true },
-    { key: 'owner_id',           type: 'varchar(32)' },
-    { key: 'status',             type: 'varchar(20)' },
-    { key: 'flagged',            type: 'boolean' },
-    { key: 'flag_reason',        type: 'text' },
+    { key: 'registered_owner', type: 'varchar(200)', sortable: true },
+    { key: 'owner_id', type: 'varchar(32)' },
+    { key: 'status', type: 'varchar(20)' },
+    { key: 'flagged', type: 'boolean' },
+    { key: 'flag_reason', type: 'text' },
   ],
   Organization: [
-    { key: 'id',                 type: 'varchar(32)',  sortable: true },
-    { key: 'name',               type: 'varchar(300)', sortable: true },
-    { key: 'cin',                type: 'varchar(25)' },
-    { key: 'gstin',              type: 'varchar(20)' },
-    { key: 'pan',                type: 'varchar(10)' },
-    { key: 'director',           type: 'varchar(200)', sortable: true },
-    { key: 'city',               type: 'varchar(100)' },
-    { key: 'state',              type: 'varchar(100)' },
+    { key: 'id', type: 'varchar(32)', sortable: true },
+    { key: 'name', type: 'varchar(300)', sortable: true },
+    { key: 'cin', type: 'varchar(25)' },
+    { key: 'gstin', type: 'varchar(20)' },
+    { key: 'pan', type: 'varchar(10)' },
+    { key: 'director', type: 'varchar(200)', sortable: true },
+    { key: 'city', type: 'varchar(100)' },
+    { key: 'state', type: 'varchar(100)' },
     { key: 'registered_address', type: 'text' },
-    { key: 'status',             type: 'varchar(30)' },
-    { key: 'risk_score',         type: 'numeric',      sortable: true },
-    { key: 'flagged',            type: 'boolean' },
+    { key: 'status', type: 'varchar(30)' },
+    { key: 'risk_score', type: 'numeric', sortable: true },
+    { key: 'flagged', type: 'boolean' },
   ],
   Account: [
-    { key: 'id',                  type: 'varchar(32)',  sortable: true },
-    { key: 'account_number',      type: 'varchar(30)',  sortable: true },
-    { key: 'bank',                type: 'varchar(100)', sortable: true },
-    { key: 'branch',              type: 'varchar(100)' },
-    { key: 'ifsc',                type: 'varchar(15)' },
-    { key: 'account_type',        type: 'varchar(30)' },
-    { key: 'linked_person',       type: 'varchar(100)' },
-    { key: 'balance',             type: 'varchar(30)' },
+    { key: 'id', type: 'varchar(32)', sortable: true },
+    { key: 'account_number', type: 'varchar(30)', sortable: true },
+    { key: 'bank', type: 'varchar(100)', sortable: true },
+    { key: 'branch', type: 'varchar(100)' },
+    { key: 'ifsc', type: 'varchar(15)' },
+    { key: 'account_type', type: 'varchar(30)' },
+    { key: 'linked_person', type: 'varchar(100)' },
+    { key: 'balance', type: 'varchar(30)' },
     { key: 'suspicious_activity', type: 'boolean' },
   ],
   Location: [
-    { key: 'id',            type: 'varchar(32)',  sortable: true },
-    { key: 'name',          type: 'varchar(200)', sortable: true },
+    { key: 'id', type: 'varchar(32)', sortable: true },
+    { key: 'name', type: 'varchar(200)', sortable: true },
     { key: 'location_type', type: 'varchar(50)' },
-    { key: 'city',          type: 'varchar(100)' },
-    { key: 'state',         type: 'varchar(100)' },
-    { key: 'lat',           type: 'numeric' },
-    { key: 'lng',           type: 'numeric' },
-    { key: 'significance',  type: 'text' },
+    { key: 'city', type: 'varchar(100)' },
+    { key: 'state', type: 'varchar(100)' },
+    { key: 'lat', type: 'numeric' },
+    { key: 'lng', type: 'numeric' },
+    { key: 'significance', type: 'text' },
   ],
   Phone: [
-    { key: 'id',             type: 'varchar(32)',  sortable: true },
-    { key: 'caller_number',  type: 'varchar(20)',  sortable: true },
-    { key: 'callee_number',  type: 'varchar(20)',  sortable: true },
-    { key: 'caller_id',      type: 'varchar(32)' },
-    { key: 'callee_id',      type: 'varchar(32)' },
-    { key: 'duration',       type: 'int',          sortable: true },
-    { key: 'call_type',      type: 'varchar(20)' },
-    { key: 'timestamp',      type: 'varchar(30)' },
+    { key: 'id', type: 'varchar(32)', sortable: true },
+    { key: 'caller_number', type: 'varchar(20)', sortable: true },
+    { key: 'callee_number', type: 'varchar(20)', sortable: true },
+    { key: 'caller_id', type: 'varchar(32)' },
+    { key: 'callee_id', type: 'varchar(32)' },
+    { key: 'duration', type: 'int', sortable: true },
+    { key: 'call_type', type: 'varchar(20)' },
+    { key: 'timestamp', type: 'varchar(30)' },
     { key: 'tower_location', type: 'varchar(100)' },
-    { key: 'flagged',        type: 'boolean' },
-    { key: 'flag_reason',    type: 'text' },
+    { key: 'flagged', type: 'boolean' },
+    { key: 'flag_reason', type: 'text' },
   ],
 };
 
 const MIXED_COLUMNS = [
-  { key: 'id',       type: 'varchar(32)',  sortable: true },
-  { key: 'nodeType', type: 'varchar(20)',  sortable: true },
-  { key: 'name',     type: 'varchar(200)', sortable: true },
-  { key: 'status',   type: 'varchar(30)' },
-  { key: 'city',     type: 'varchar(100)' },
-  { key: 'state',    type: 'varchar(100)' },
+  { key: 'id', type: 'varchar(32)', sortable: true },
+  { key: 'nodeType', type: 'varchar(20)', sortable: true },
+  { key: 'name', type: 'varchar(200)', sortable: true },
+  { key: 'status', type: 'varchar(30)' },
+  { key: 'city', type: 'varchar(100)' },
+  { key: 'state', type: 'varchar(100)' },
 ];
 
 function getEntityLabel(e: any): string {
@@ -255,8 +256,6 @@ function formatHeader(key: string): string {
     .join(' ');
 }
 
-const PAGE_SIZE = 20;
-
 export default function EntitiesPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -264,6 +263,7 @@ export default function EntitiesPage() {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(20);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
@@ -458,7 +458,7 @@ export default function EntitiesPage() {
           memoryEntitiesCache = json.data;
           try {
             sessionStorage.setItem(CACHE_KEY, JSON.stringify(json.data));
-          } catch {}
+          } catch { }
           setDbStatus(`Live MongoDB Synced (${db.name || 'Atlas'})`);
           setIsLoading(false);
           return;
@@ -482,7 +482,7 @@ export default function EntitiesPage() {
         memoryEntitiesCache = json.data;
         try {
           sessionStorage.setItem(CACHE_KEY, JSON.stringify(json.data));
-        } catch {}
+        } catch { }
         setDbStatus('Live Database Synced');
       } else {
         setDbStatus(liveData ? 'Live Database Synced' : 'Connecting to database...');
@@ -660,8 +660,18 @@ export default function EntitiesPage() {
     return result;
   }, [resolvedType, entitiesByType, allEntities, flaggedOnly, search, sortField, sortOrder]);
 
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(() => {
+    if (pageSize === -1) return filtered;
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  // Reset page when filters, search, or pageSize changes
+  useEffect(() => {
+    setPage(1);
+  }, [search, typeFilter, flaggedOnly, pageSize]);
 
   const handleTypeFilter = (t: string) => {
     const next = new URLSearchParams(searchParams);
@@ -686,6 +696,7 @@ export default function EntitiesPage() {
   };
 
   const totalEntitiesCount = Object.values(counts).reduce((a, b) => a + b, 0);
+  const totalForCategory = resolvedType ? (entitiesByType[resolvedType] || []).length : totalEntitiesCount;
 
   // Measure and sync table scrollWidth for the sticky horizontal scrollbar
   useEffect(() => {
@@ -1011,66 +1022,78 @@ export default function EntitiesPage() {
           </button>
         )}
 
-        {/* Row count & Next/Prev pagination buttons above table */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'var(--font-mono)' }}>
-            {filtered.length > 0 ? ((page - 1) * PAGE_SIZE) + 1 : 0}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} rows
+        {/* Row Counts, Page Size & Pagination Controls above table */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14, fontSize: '0.8rem', color: '#64748b', flexWrap: 'wrap' }}>
+          <span>
+            {filtered.length > 0
+              ? `${pageSize === -1 ? 1 : ((page - 1) * pageSize) + 1}–${pageSize === -1 ? filtered.length : Math.min(page * pageSize, filtered.length)} of ${filtered.length} rows`
+              : '0 rows'}
+            {filtered.length !== totalForCategory && ` (from ${totalForCategory})`}
           </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage(1)}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: '#94a3b8' }}>Per page:</span>
+            <select
+              value={pageSize}
+              onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
               style={{
-                padding: '4px 8px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page <= 1 ? 'not-allowed' : 'pointer',
-                color: page <= 1 ? '#cbd5e1' : '#334155', fontWeight: 600
-              }}
-              title="First Page"
-            >
-              «
-            </button>
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage(p => p - 1)}
-              style={{
-                padding: '4px 10px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page <= 1 ? 'not-allowed' : 'pointer',
-                color: page <= 1 ? '#cbd5e1' : '#334155', fontWeight: 600
+                height: 28, padding: '0 6px', fontSize: '0.75rem',
+                background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 5,
+                color: '#334155', cursor: 'pointer', outline: 'none'
               }}
             >
-              Prev
-            </button>
-            <span style={{ fontSize: '0.78rem', color: '#334155', padding: '0 6px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-              {page} / {totalPages}
-            </span>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
-              style={{
-                padding: '4px 10px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-                color: page >= totalPages ? '#cbd5e1' : '#334155', fontWeight: 600
-              }}
-            >
-              Next
-            </button>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage(totalPages)}
-              style={{
-                padding: '4px 8px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-                color: page >= totalPages ? '#cbd5e1' : '#334155', fontWeight: 600
-              }}
-              title="Last Page"
-            >
-              »
-            </button>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={-1}>All ({totalForCategory})</option>
+            </select>
           </div>
+
+          {pageSize !== -1 && totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage(1)}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="First Page"
+              >
+                <ChevronsLeft size={14} />
+              </button>
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="Previous Page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+
+              <InlinePageNav page={page} totalPages={totalPages} onPageChange={setPage} />
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="Next Page"
+              >
+                <ChevronRight size={14} />
+              </button>
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(totalPages)}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="Last Page"
+              >
+                <ChevronsRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
