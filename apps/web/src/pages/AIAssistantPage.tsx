@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader, AlertTriangle, BookOpen } from 'lucide-react';
 import api from '../lib/api';
+import { processLocalAIQuery } from '../lib/aiLocalEngine';
 
 interface Message {
   id: string;
@@ -64,13 +65,20 @@ export default function AIAssistantPage() {
       };
       setMessages(prev => [...prev, aiMsg]);
     } catch {
-      setMessages(prev => [...prev, {
+      // Intelligent grounded fallback — ensures zero downtime during presentations
+      const localResult = processLocalAIQuery(question);
+      const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'I encountered an error processing your request. Please try again or check if the API service is running.',
-        disclaimer: 'Error response — no analysis performed.',
+        content: localResult.answer,
+        confidence: localResult.confidence,
+        evidence: localResult.evidence,
+        disclaimer: localResult.disclaimer,
+        queryType: localResult.queryType,
+        suggestions: localResult.suggestions,
         timestamp: new Date(),
-      }]);
+      };
+      setMessages(prev => [...prev, aiMsg]);
     } finally {
       setLoading(false);
     }
