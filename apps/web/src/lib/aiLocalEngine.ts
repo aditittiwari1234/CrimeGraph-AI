@@ -20,7 +20,7 @@ export interface AIQueryResult {
   evidence: string[];
   disclaimer: string;
   queryType: string;
-  suggestions: string[];
+  suggestions?: string[];
 }
 
 export function processLocalAIQuery(question: string): AIQueryResult {

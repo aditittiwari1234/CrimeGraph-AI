@@ -20,6 +20,10 @@ export async function initPostgres(): Promise<void> {
     ssl: process.env.DB_SSL === 'true' || sanitizedUrl.includes('sslmode=') ? { rejectUnauthorized: false } : undefined,
   });
 
+  pool.on('error', (err: Error) => {
+    logger.warn(`Unexpected error on idle PostgreSQL client (will reconnect): ${err.message}`);
+  });
+
   const client = await pool.connect();
   try {
     await client.query('SELECT NOW()');

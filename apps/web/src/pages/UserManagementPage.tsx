@@ -1,14 +1,15 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Plus, Pencil, Trash2, Camera, X, Save, Search, UserCheck, Users,
-  Shield, ChevronDown, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle,
-  Copy, Check, FileText, Mail
+  Plus, Pencil, Trash2, Camera, X, Save, Search, UserCheck, UserX, Users,
+  Shield, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle,
+  Copy, Check, FileText, Mail, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import { useAuth, type User } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import ImageCropModal from '../components/profile/ImageCropModal';
 import TableContextMenu, { type ContextMenuItem } from '../components/common/TableContextMenu';
+import InlinePageNav from '../components/common/InlinePageNav';
 
 const ROLES = [
   { value: 'administrator', label: 'Administrator' },
@@ -366,20 +367,18 @@ function UserFormModal({ initial, onSave, onClose }: UserFormModalProps) {
             <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted, #64748b)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>
               Role
             </label>
-            <div style={{ position: 'relative' }}>
-              <select
-                value={form.role}
-                onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                style={{
-                  width: '100%', boxSizing: 'border-box', padding: '8px 32px 8px 10px',
-                  background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 7,
-                  color: '#0f172a', fontSize: '0.85rem', outline: 'none', appearance: 'none',
-                }}
-              >
-                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
-              <ChevronDown size={13} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
-            </div>
+            <select
+              className="form-select"
+              value={form.role}
+              onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                border: '1px solid #cbd5e1', borderRadius: 7,
+                color: '#0f172a', fontSize: '0.85rem',
+              }}
+            >
+              {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
           </div>
 
           {/* Department */}
@@ -387,21 +386,19 @@ function UserFormModal({ initial, onSave, onClose }: UserFormModalProps) {
             <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted, #64748b)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>
               Department
             </label>
-            <div style={{ position: 'relative' }}>
-              <select
-                value={form.department}
-                onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
-                style={{
-                  width: '100%', boxSizing: 'border-box', padding: '8px 32px 8px 10px',
-                  background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 7,
-                  color: '#0f172a', fontSize: '0.85rem', outline: 'none', appearance: 'none',
-                }}
-              >
-                <option value="">Select department…</option>
-                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-              <ChevronDown size={13} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
-            </div>
+            <select
+              className="form-select"
+              value={form.department}
+              onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                border: '1px solid #cbd5e1', borderRadius: 7,
+                color: '#0f172a', fontSize: '0.85rem',
+              }}
+            >
+              <option value="">Select department…</option>
+              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
           </div>
 
           {/* Actions */}
@@ -439,8 +436,6 @@ function UserFormModal({ initial, onSave, onClose }: UserFormModalProps) {
   );
 }
 
-const PAGE_SIZE = 15;
-
 export default function UserManagementPage() {
   const { user: currentUser, managedUsers, addManagedUser, updateManagedUser, deleteManagedUser, refreshManagedUsers } = useAuth();
   const navigate = useNavigate();
@@ -453,10 +448,11 @@ export default function UserManagementPage() {
   const [syncNotice, setSyncNotice] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Table Sorting and Pagination (Entities-style)
+  // Table Sorting and Pagination (Audit Logs style)
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(20);
 
   // Right-click context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -506,6 +502,16 @@ export default function UserManagementPage() {
     });
   };
 
+  const handleToggleAccess = async (targetUser: User) => {
+    const willBeActive = targetUser.isActive === false;
+    try {
+      await updateManagedUser(targetUser.id, { isActive: willBeActive });
+      showToast(willBeActive ? `Access granted for @${targetUser.username}` : `Access revoked for @${targetUser.username}`);
+    } catch (err: any) {
+      showToast(`Failed to update access: ${err.message}`);
+    }
+  };
+
   const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
     if (!contextMenu) return [];
     const { targetUser, colKey, colValue } = contextMenu;
@@ -513,29 +519,37 @@ export default function UserManagementPage() {
 
     items.push({
       label: 'Edit User Profile',
-      sublabel: `Edit ${targetUser.fullName}`,
       icon: Pencil,
       iconColor: '#2563eb',
       onClick: () => openEdit(targetUser),
     });
 
     items.push({
-      label: `Audit Logs for @${targetUser.username}`,
-      sublabel: 'View cryptographic actions trail',
+      label: 'Audit Logs',
       icon: FileText,
       iconColor: '#7c3aed',
       onClick: () => navigate(`/audit?user=${encodeURIComponent(targetUser.username)}`),
-      dividerAfter: true,
+      dividerAfter: targetUser.id === currentUser?.id,
     });
+
+    if (targetUser.id !== currentUser?.id) {
+      items.push({
+        label: targetUser.isActive !== false ? 'Revoke Access' : 'Grant Access',
+        icon: targetUser.isActive !== false ? UserX : UserCheck,
+        iconColor: targetUser.isActive !== false ? '#ea580c' : '#16a34a',
+        onClick: () => handleToggleAccess(targetUser),
+        dividerAfter: true,
+      });
+    }
 
     if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
       const displayVal = String(colValue);
       const truncated = displayVal.length > 30 ? displayVal.slice(0, 30) + '...' : displayVal;
       items.push({
-        label: `Copy Cell Value (${formatHeader(colKey)})`,
+        label: `Copy ${formatHeader(colKey)}`,
         sublabel: `"${truncated}"`,
-        icon: Copy,
-        iconColor: '#059669',
+        icon: colKey === 'email' ? Mail : Copy,
+        iconColor: colKey === 'email' ? undefined : '#059669',
         onClick: () => {
           navigator.clipboard.writeText(displayVal);
           showToast(`Copied ${formatHeader(colKey)}: "${truncated}" to clipboard!`);
@@ -552,30 +566,18 @@ export default function UserManagementPage() {
           navigator.clipboard.writeText(targetUser.username);
           showToast(`Copied @${targetUser.username} to clipboard!`);
         },
-        dividerAfter: colKey === 'email' || (!targetUser.email && targetUser.id !== currentUser?.id),
       });
     }
 
     if (targetUser.email && colKey !== 'email') {
       items.push({
-        label: 'Copy Email Address',
+        label: 'Copy Email',
         sublabel: targetUser.email,
         icon: Mail,
         onClick: () => {
           navigator.clipboard.writeText(targetUser.email);
-          showToast('Copied email address to clipboard!');
+          showToast(`Copied ${targetUser.email} to clipboard!`);
         },
-        dividerAfter: targetUser.id !== currentUser?.id,
-      });
-    }
-
-    if (targetUser.id !== currentUser?.id) {
-      items.push({
-        label: 'Delete User Account',
-        sublabel: `Remove @${targetUser.username}`,
-        icon: Trash2,
-        danger: true,
-        onClick: () => setDeleteConfirm(targetUser.id),
       });
     }
 
@@ -627,10 +629,25 @@ export default function UserManagementPage() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await refreshManagedUsers();
-    setIsRefreshing(false);
-    setSyncNotice('Users synced with PostgreSQL database');
-    setTimeout(() => setSyncNotice(''), 4000);
+    const startTime = Date.now();
+    try {
+      const result = await refreshManagedUsers();
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 600) {
+        await new Promise(r => setTimeout(r, 600 - elapsed));
+      }
+      if (result.success) {
+        setSyncNotice(`Users successfully synced with PostgreSQL database (${result.count ?? managedUsers.length} accounts active)`);
+      } else {
+        setSyncNotice(`⚠️ Sync failed: ${result.error || 'Database connection error'}`);
+      }
+      setTimeout(() => setSyncNotice(''), 5000);
+    } catch (err: any) {
+      setSyncNotice(`⚠️ Sync failed: ${err.message}`);
+      setTimeout(() => setSyncNotice(''), 5000);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleSort = (key: string) => {
@@ -680,8 +697,18 @@ export default function UserManagementPage() {
     return result;
   }, [managedUsers, search, roleFilter, sortField, sortOrder]);
 
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(() => {
+    if (pageSize === -1) return filtered;
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  // Reset page when filters or pageSize change
+  useEffect(() => {
+    setPage(1);
+  }, [search, roleFilter, pageSize]);
 
   // Measure and sync table scrollWidth for the sticky horizontal scrollbar
   useEffect(() => {
@@ -788,14 +815,14 @@ export default function UserManagementPage() {
                 fontSize: '0.72rem',
                 padding: '2px 8px',
                 borderRadius: 12,
-                background: '#ecfdf5',
-                color: '#047857',
-                border: '1px solid #a7f3d0',
+                background: isRefreshing ? '#fef3c7' : '#ecfdf5',
+                color: isRefreshing ? '#b45309' : '#047857',
+                border: `1px solid ${isRefreshing ? '#fde68a' : '#a7f3d0'}`,
                 fontWeight: 500,
                 whiteSpace: 'nowrap'
               }}>
-                <CheckCircle2 size={12} />
-                PostgreSQL Connected
+                {isRefreshing ? <RefreshCw size={11} className="spin" /> : <CheckCircle2 size={12} />}
+                {isRefreshing ? 'Syncing Database...' : 'PostgreSQL Connected'}
               </span>
             </div>
             <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
@@ -868,7 +895,7 @@ export default function UserManagementPage() {
             title="Refresh list from database"
           >
             <RefreshCw size={13} className={isRefreshing ? 'spin' : ''} />
-            <span>Sync Database</span>
+            <span>{isRefreshing ? 'Syncing...' : 'Sync Database'}</span>
           </button>
 
           <button
@@ -886,17 +913,19 @@ export default function UserManagementPage() {
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '10px 16px', borderRadius: 8,
-          background: '#eff6ff', border: '1px solid #bfdbfe',
-          color: '#1d4ed8', fontSize: '0.85rem', fontWeight: 500, marginBottom: 18
+          background: syncNotice.startsWith('⚠️') ? '#fef2f2' : '#eff6ff',
+          border: syncNotice.startsWith('⚠️') ? '1px solid #fecaca' : '1px solid #bfdbfe',
+          color: syncNotice.startsWith('⚠️') ? '#b91c1c' : '#1d4ed8',
+          fontSize: '0.85rem', fontWeight: 500, marginBottom: 18
         }}>
-          <CheckCircle2 size={16} />
+          {syncNotice.startsWith('⚠️') ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
           <span>{syncNotice}</span>
         </div>
       )}
 
       {/* Filter, search bar and pagination above the table */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="search-input-wrapper" style={{ width: 280, maxWidth: '100%' }}>
+        <div className="search-input-wrapper" style={{ width: 280, maxWidth: '100%', flexShrink: 0 }}>
           <Search size={15} className="search-icon" />
           <input
             className="form-input"
@@ -906,24 +935,23 @@ export default function UserManagementPage() {
           />
         </div>
 
-        <div style={{ position: 'relative' }}>
-          <select
-            className="form-select"
-            value={roleFilter}
-            onChange={e => { setRoleFilter(e.target.value); setPage(1); }}
-            style={{
-              padding: '8px 32px 8px 12px',
-              fontSize: '0.82rem',
-              height: 34,
-              borderRadius: 8,
-              border: '1px solid #cbd5e1'
-            }}
-          >
-            <option value="">All Roles</option>
-            {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-          </select>
-          <ChevronDown size={13} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
-        </div>
+        <select
+          className="form-select"
+          value={roleFilter}
+          onChange={e => { setRoleFilter(e.target.value); setPage(1); }}
+          style={{
+            width: 175,
+            flexShrink: 0,
+            fontSize: '0.82rem',
+            height: 34,
+            borderRadius: 8,
+            border: '1px solid #cbd5e1',
+            boxSizing: 'border-box'
+          }}
+        >
+          <option value="">All Roles</option>
+          {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+        </select>
 
         {roleFilter && (
           <button className="btn btn-secondary btn-sm" onClick={() => setRoleFilter('')}>
@@ -931,66 +959,78 @@ export default function UserManagementPage() {
           </button>
         )}
 
-        {/* Row count & Next/Prev pagination buttons above table */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'var(--font-mono)' }}>
-            {filtered.length > 0 ? ((page - 1) * PAGE_SIZE) + 1 : 0}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} rows
+        {/* Row Counts, Page Size & Pagination Controls above table */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14, fontSize: '0.8rem', color: '#64748b', flexWrap: 'wrap' }}>
+          <span>
+            {filtered.length > 0
+              ? `${pageSize === -1 ? 1 : ((page - 1) * pageSize) + 1}–${pageSize === -1 ? filtered.length : Math.min(page * pageSize, filtered.length)} of ${filtered.length} rows`
+              : '0 rows'}
+            {filtered.length !== managedUsers.length && ` (from ${managedUsers.length})`}
           </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage(1)}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: '#94a3b8' }}>Per page:</span>
+            <select
+              value={pageSize}
+              onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
               style={{
-                padding: '4px 8px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page <= 1 ? 'not-allowed' : 'pointer',
-                color: page <= 1 ? '#cbd5e1' : '#334155', fontWeight: 600
-              }}
-              title="First Page"
-            >
-              «
-            </button>
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage(p => p - 1)}
-              style={{
-                padding: '4px 10px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page <= 1 ? 'not-allowed' : 'pointer',
-                color: page <= 1 ? '#cbd5e1' : '#334155', fontWeight: 600
+                height: 28, padding: '0 6px', fontSize: '0.75rem',
+                background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 5,
+                color: '#334155', cursor: 'pointer', outline: 'none'
               }}
             >
-              Prev
-            </button>
-            <span style={{ fontSize: '0.78rem', color: '#334155', padding: '0 6px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-              {page} / {totalPages}
-            </span>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
-              style={{
-                padding: '4px 10px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-                color: page >= totalPages ? '#cbd5e1' : '#334155', fontWeight: 600
-              }}
-            >
-              Next
-            </button>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage(totalPages)}
-              style={{
-                padding: '4px 8px', fontSize: '0.78rem', background: '#ffffff',
-                border: '1px solid #cbd5e1', borderRadius: 5,
-                cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-                color: page >= totalPages ? '#cbd5e1' : '#334155', fontWeight: 600
-              }}
-              title="Last Page"
-            >
-              »
-            </button>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={-1}>All ({managedUsers.length})</option>
+            </select>
           </div>
+
+          {pageSize !== -1 && totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage(1)}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="First Page"
+              >
+                <ChevronsLeft size={14} />
+              </button>
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="Previous Page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+
+              <InlinePageNav page={page} totalPages={totalPages} onPageChange={setPage} />
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="Next Page"
+              >
+                <ChevronRight size={14} />
+              </button>
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(totalPages)}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="Last Page"
+              >
+                <ChevronsRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1195,6 +1235,24 @@ export default function UserManagementPage() {
                         >
                           <Pencil size={11} /> Edit
                         </button>
+                        {u.id !== currentUser?.id && (
+                          <button
+                            onClick={() => handleToggleAccess(u)}
+                            style={{
+                              padding: '4px 8px', borderRadius: 5,
+                              background: u.isActive !== false ? '#fff7ed' : '#f0fdf4',
+                              border: u.isActive !== false ? '1px solid #fed7aa' : '1px solid #bbf7d0',
+                              color: u.isActive !== false ? '#c2410c' : '#15803d',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600,
+                              whiteSpace: 'nowrap'
+                            }}
+                            title={u.isActive !== false ? `Revoke access for @${u.username}` : `Grant access for @${u.username}`}
+                          >
+                            {u.isActive !== false ? <UserX size={11} /> : <UserCheck size={11} />}
+                            {u.isActive !== false ? 'Revoke Access' : 'Grant Access'}
+                          </button>
+                        )}
                         {u.id !== currentUser?.id && (
                           <button
                             onClick={() => setDeleteConfirm(u.id)}

@@ -42,8 +42,8 @@ export default function TableContextMenu({
   useEffect(() => {
     if (!menuRef.current) return;
     const rect = menuRef.current.getBoundingClientRect();
-    const menuWidth = rect.width || 240;
-    const menuHeight = rect.height || 300;
+    const menuWidth = rect.width || 190;
+    const menuHeight = rect.height || 260;
 
     let posX = x;
     let posY = y;
@@ -107,8 +107,8 @@ export default function TableContextMenu({
         left: coords.left,
         top: coords.top,
         zIndex: 99999,
-        minWidth: 230,
-        maxWidth: 320,
+        minWidth: 170,
+        maxWidth: 240,
         background: '#ffffff',
         border: '1px solid #cbd5e1',
         borderRadius: 8,
@@ -125,7 +125,7 @@ export default function TableContextMenu({
       {(title || subtitle || badge) && (
         <div
           style={{
-            padding: '10px 14px 8px 14px',
+            padding: '7px 11px 6px 11px',
             background: '#f8fafc',
             borderBottom: '1px solid #e2e8f0',
           }}
@@ -199,8 +199,8 @@ export default function TableContextMenu({
                   width: '100%',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 10,
-                  padding: '7px 14px',
+                  gap: 8,
+                  padding: '5px 11px',
                   border: 'none',
                   background: 'transparent',
                   textAlign: 'left',

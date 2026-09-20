@@ -47,10 +47,29 @@ interface DatabaseContextType {
   setIsAddModalOpen: (open: boolean) => void;
 }
 
-const DEFAULT_DATABASES: DatabaseConnection[] = [];
+const DEFAULT_DATABASES: DatabaseConnection[] = [
+  {
+    id: 'db-internal-postgres',
+    name: 'CrimeGraph Internal Database (PostgreSQL)',
+    type: 'postgresql',
+    host: 'localhost',
+    port: 5432,
+    databaseName: 'crimegraph_db',
+    department: 'CrimeGraph Core Engine',
+    classification: 'Top Secret',
+    status: 'connected',
+    recordCount: 288,
+    latencyMs: 12,
+    isDefault: true,
+    sslEnabled: true,
+    lastPing: 'Live Connected',
+    createdAt: new Date().toISOString(),
+    description: 'Internal PostgreSQL database managed securely by API server',
+  }
+];
 
-const STORAGE_KEY = 'crimegraph_databases_v5';
-const ACTIVE_DB_KEY = 'crimegraph_active_db_id_v5';
+const STORAGE_KEY = 'crimegraph_databases_v7';
+const ACTIVE_DB_KEY = 'crimegraph_active_db_id_v7';
 
 const DatabaseContext = createContext<DatabaseContextType | null>(null);
 

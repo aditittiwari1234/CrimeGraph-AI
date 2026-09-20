@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, RefreshCw, ShieldCheck, Copy, Check, Eye, X,
-  ChevronLeft, ChevronRight, Filter, Database, Hash, User,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Filter, Hash, User,
   ExternalLink, Info, UserCheck, Shield
 } from 'lucide-react';
 import api from '../lib/api';
 import TableContextMenu, { type ContextMenuItem } from '../components/common/TableContextMenu';
+import InlinePageNav from '../components/common/InlinePageNav';
 
 interface AuditLog {
   id: string;
@@ -169,7 +170,6 @@ export default function AuditLogsPage() {
 
     items.push({
       label: 'Inspect Audit Record',
-      sublabel: `Open full modal for ${log.id.slice(0, 8)}...`,
       icon: Eye,
       iconColor: '#2563eb',
       onClick: () => setActiveLogModal(log),
@@ -205,7 +205,7 @@ export default function AuditLogsPage() {
       const displayVal = typeof colValue === 'object' ? JSON.stringify(colValue) : String(colValue);
       const truncated = displayVal.length > 30 ? displayVal.slice(0, 30) + '...' : displayVal;
       items.push({
-        label: `Copy Cell Value (${formatHeader(colKey)})`,
+        label: `Copy ${formatHeader(colKey)}`,
         sublabel: `"${truncated}"`,
         icon: Copy,
         iconColor: '#059669',
@@ -216,25 +216,14 @@ export default function AuditLogsPage() {
       });
     }
 
-    items.push({
-      label: 'Copy Record UUID',
-      sublabel: log.id,
-      icon: Copy,
-      onClick: () => {
-        navigator.clipboard.writeText(log.id);
-        showToast('Copied Audit Record UUID!');
-      },
-    });
-
-    if (log.data_hash) {
+    if (colKey !== 'id') {
       items.push({
-        label: 'Copy SHA-256 Hash',
-        sublabel: `${log.data_hash.slice(0, 16)}...`,
-        icon: Hash,
-        iconColor: '#059669',
+        label: 'Copy Record UUID',
+        sublabel: log.id,
+        icon: Copy,
         onClick: () => {
-          navigator.clipboard.writeText(log.data_hash);
-          showToast('Copied cryptographic SHA-256 hash!');
+          navigator.clipboard.writeText(log.id);
+          showToast('Copied Audit Record UUID!');
         },
       });
     }
@@ -482,7 +471,16 @@ export default function AuditLogsPage() {
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.78rem', color: '#64748b' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Hash size={13} color="#059669" />
+              SHA-256 Hashing Active
+            </span>
+            <span>&bull;</span>
+            <span>Genesis Root Linked</span>
+          </div>
+
           <button
             onClick={fetchLogs}
             disabled={loading}
@@ -493,27 +491,6 @@ export default function AuditLogsPage() {
             <RefreshCw size={14} className={loading ? 'spin' : ''} />
             {loading ? 'Syncing...' : 'Sync Database'}
           </button>
-        </div>
-      </div>
-
-      {/* Database & Hash Banner */}
-      <div className="card" style={{ marginBottom: 16, background: '#f8fafc', borderColor: '#e2e8f0', padding: '12px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#475569' }}>
-            <Database size={15} color="#2563eb" />
-            <span>
-              Connected to <strong>PostgreSQL / Neon DB</strong> &bull; Showing all <strong>14 schema columns</strong> &bull; Total records in DB: <strong>{totalCount}</strong>
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.78rem', color: '#64748b' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Hash size={13} color="#059669" />
-              SHA-256 Hashing Active
-            </span>
-            <span>&bull;</span>
-            <span>Genesis Root Linked</span>
-          </div>
         </div>
       </div>
 
@@ -629,7 +606,7 @@ export default function AuditLogsPage() {
           </span>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Per page:</span>
+            <span style={{ color: '#94a3b8' }}>Per page:</span>
             <select
               value={pageSize}
               onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
@@ -651,25 +628,43 @@ export default function AuditLogsPage() {
               <button
                 className="btn btn-secondary btn-sm"
                 disabled={page <= 1}
+                onClick={() => setPage(1)}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="First Page"
+              >
+                <ChevronsLeft size={14} />
+              </button>
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page <= 1}
                 onClick={() => setPage(p => Math.max(1, p - 1))}
-                style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
                 title="Previous Page"
               >
                 <ChevronLeft size={14} />
               </button>
 
-              <span style={{ fontSize: '0.78rem', color: '#334155', padding: '0 4px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                {page} / {totalPages}
-              </span>
+              <InlinePageNav page={page} totalPages={totalPages} onPageChange={setPage} />
 
               <button
                 className="btn btn-secondary btn-sm"
                 disabled={page >= totalPages}
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
                 title="Next Page"
               >
                 <ChevronRight size={14} />
+              </button>
+
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(totalPages)}
+                style={{ display: 'flex', alignItems: 'center', padding: '4px 6px' }}
+                title="Last Page"
+              >
+                <ChevronsRight size={14} />
               </button>
             </div>
           )}
