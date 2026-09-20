@@ -629,14 +629,25 @@ export default function UserManagementPage() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    const result = await refreshManagedUsers();
-    setIsRefreshing(false);
-    if (result.success) {
-      setSyncNotice(`Users successfully synced with PostgreSQL database (${result.count} accounts active)`);
-    } else {
-      setSyncNotice(`⚠️ Sync failed: ${result.error || 'Database connection error'}`);
+    const startTime = Date.now();
+    try {
+      const result = await refreshManagedUsers();
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 600) {
+        await new Promise(r => setTimeout(r, 600 - elapsed));
+      }
+      if (result.success) {
+        setSyncNotice(`Users successfully synced with PostgreSQL database (${result.count ?? managedUsers.length} accounts active)`);
+      } else {
+        setSyncNotice(`⚠️ Sync failed: ${result.error || 'Database connection error'}`);
+      }
+      setTimeout(() => setSyncNotice(''), 5000);
+    } catch (err: any) {
+      setSyncNotice(`⚠️ Sync failed: ${err.message}`);
+      setTimeout(() => setSyncNotice(''), 5000);
+    } finally {
+      setIsRefreshing(false);
     }
-    setTimeout(() => setSyncNotice(''), 5000);
   };
 
   const handleSort = (key: string) => {
@@ -804,14 +815,14 @@ export default function UserManagementPage() {
                 fontSize: '0.72rem',
                 padding: '2px 8px',
                 borderRadius: 12,
-                background: '#ecfdf5',
-                color: '#047857',
-                border: '1px solid #a7f3d0',
+                background: isRefreshing ? '#fef3c7' : '#ecfdf5',
+                color: isRefreshing ? '#b45309' : '#047857',
+                border: `1px solid ${isRefreshing ? '#fde68a' : '#a7f3d0'}`,
                 fontWeight: 500,
                 whiteSpace: 'nowrap'
               }}>
-                <CheckCircle2 size={12} />
-                PostgreSQL Connected
+                {isRefreshing ? <RefreshCw size={11} className="spin" /> : <CheckCircle2 size={12} />}
+                {isRefreshing ? 'Syncing Database...' : 'PostgreSQL Connected'}
               </span>
             </div>
             <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
@@ -884,7 +895,7 @@ export default function UserManagementPage() {
             title="Refresh list from database"
           >
             <RefreshCw size={13} className={isRefreshing ? 'spin' : ''} />
-            <span>Sync Database</span>
+            <span>{isRefreshing ? 'Syncing...' : 'Sync Database'}</span>
           </button>
 
           <button

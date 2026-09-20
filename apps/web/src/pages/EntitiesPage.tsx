@@ -5,7 +5,7 @@ import {
   Search, Users, Phone, Truck, Building2, CreditCard, MapPin,
   Flag, RefreshCw, CheckCircle2, Database, AlertCircle,
   ExternalLink, Network, Copy, Check, Filter, Info,
-  Layers, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileText, ShieldAlert,
+  Layers, LayoutGrid, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileText, ShieldAlert,
   FileCode, Activity, Eye, AlertTriangle
 } from 'lucide-react';
 import { useDatabases } from '../contexts/DatabaseContext';
@@ -266,6 +266,20 @@ export default function EntitiesPage() {
   const [pageSize, setPageSize] = useState<number>(20);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [viewMode, setViewMode] = useState<'cards' | 'tabs'>(() => {
+    try {
+      return (localStorage.getItem('crimegraph_entities_view_mode') as 'cards' | 'tabs') || 'cards';
+    } catch {
+      return 'cards';
+    }
+  });
+
+  const handleToggleView = (mode: 'cards' | 'tabs') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('crimegraph_entities_view_mode', mode);
+    } catch {}
+  };
 
   // Right-click context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -309,7 +323,6 @@ export default function EntitiesPage() {
 
     items.push({
       label: 'View Entity Dossier',
-      sublabel: `Open full details for ${entity.id}`,
       icon: Info,
       iconColor: '#2563eb',
       onClick: () => navigate(`/entities/${entity.nodeType}/${entity.id}`),
@@ -317,7 +330,6 @@ export default function EntitiesPage() {
 
     items.push({
       label: 'Open in Network Graph',
-      sublabel: 'Inspect 2-degree connections & network topology',
       icon: Network,
       iconColor: '#7c3aed',
       onClick: () =>
@@ -366,7 +378,6 @@ export default function EntitiesPage() {
     if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
       items.push({
         label: `Filter Table by "${formatHeader(colKey)}"`,
-        sublabel: `Show rows matching: ${String(colValue).slice(0, 20)}`,
         icon: Filter,
         iconColor: '#ca8a04',
         onClick: () => {
@@ -380,7 +391,6 @@ export default function EntitiesPage() {
     const flagged = isFlagged(entity);
     items.push({
       label: flagged ? 'Remove Priority Flag' : 'Flag as Priority Target',
-      sublabel: flagged ? 'Remove from high-risk watch list' : 'Mark for priority surveillance review',
       icon: Flag,
       iconColor: flagged ? '#94a3b8' : '#dc2626',
       danger: !flagged,
@@ -402,14 +412,16 @@ export default function EntitiesPage() {
   const tableRef = useRef<HTMLDivElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
   const cardsTrackRef = useRef<HTMLDivElement>(null);
+  const tabsTrackRef = useRef<HTMLDivElement>(null);
   const [scrollWidth, setScrollWidth] = useState(2000);
   const isSyncingBottom = useRef(false);
   const isSyncingTable = useRef(false);
 
-  const scrollCards = (direction: 'left' | 'right') => {
-    if (cardsTrackRef.current) {
-      const amount = 340;
-      cardsTrackRef.current.scrollBy({
+  const scrollCategories = (direction: 'left' | 'right') => {
+    const el = viewMode === 'cards' ? cardsTrackRef.current : tabsTrackRef.current;
+    if (el) {
+      const amount = viewMode === 'cards' ? 340 : 250;
+      el.scrollBy({
         left: direction === 'left' ? -amount : amount,
         behavior: 'smooth',
       });
@@ -445,15 +457,19 @@ export default function EntitiesPage() {
   const [isLoading, setIsLoading] = useState<boolean>(!initialCache);
   const [dbStatus, setDbStatus] = useState<string>(initialCache ? 'Live Database Synced' : 'Connecting to database...');
 
-  const fetchLiveData = useCallback(async () => {
+  const fetchLiveData = useCallback(async (isManualRefresh?: boolean) => {
     setIsLoading(true);
+    const startTime = Date.now();
     const db = activeDatabase || databases[0];
 
     try {
       if (db?.type === 'mongodb') {
         const uri = db.connectionUri || (db.host?.startsWith('mongodb') ? db.host : '');
         const dbParam = db.databaseName ? `&db=${encodeURIComponent(db.databaseName)}` : '';
-        const res = await fetch(`/api/database/mongo-data?uri=${encodeURIComponent(uri)}${dbParam}&limit=2000`);
+        const res = await fetch(`/api/database/mongo-data?uri=${encodeURIComponent(uri)}${dbParam}&limit=2000&_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+        });
         const json = await res.json();
         if (json.success && json.data) {
           setLiveData(json.data);
@@ -462,7 +478,15 @@ export default function EntitiesPage() {
             sessionStorage.setItem(CACHE_KEY, JSON.stringify(json.data));
           } catch { }
           setDbStatus(`Live MongoDB Synced (${db.name || 'Atlas'})`);
-          setIsLoading(false);
+          if (isManualRefresh) {
+            showToast('Synced live data from MongoDB!');
+          }
+          return;
+        } else {
+          setDbStatus('Sync error: MongoDB query failed');
+          if (isManualRefresh) {
+            showToast(json.error || 'Failed to sync with MongoDB');
+          }
           return;
         }
       }
@@ -470,13 +494,15 @@ export default function EntitiesPage() {
       // Relational / PostgreSQL
       let uriParam = '';
       if (db?.connectionUri) {
-        uriParam = `?uri=${encodeURIComponent(db.connectionUri)}`;
+        uriParam = `uri=${encodeURIComponent(db.connectionUri)}&`;
       } else if (db?.host?.startsWith('postgres://') || db?.host?.startsWith('postgresql://')) {
-        uriParam = `?uri=${encodeURIComponent(db.host)}`;
+        uriParam = `uri=${encodeURIComponent(db.host)}&`;
       }
 
-      const separator = uriParam ? '&' : '?';
-      const res = await fetch(`/api/database/live-data${uriParam}${separator}limit=2000`);
+      const res = await fetch(`/api/database/live-data?${uriParam}limit=2000&_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+      });
       const json = await res.json();
 
       if (json.success && json.data) {
@@ -486,15 +512,29 @@ export default function EntitiesPage() {
           sessionStorage.setItem(CACHE_KEY, JSON.stringify(json.data));
         } catch { }
         setDbStatus('Live Database Synced');
+        if (isManualRefresh) {
+          showToast(`Database synced! Loaded ${json.totalRows ?? 'all'} live records.`);
+        }
       } else {
-        setDbStatus(liveData ? 'Live Database Synced' : 'Connecting to database...');
+        setDbStatus('Sync error: Database query failed');
+        if (isManualRefresh) {
+          showToast(json.error || 'Failed to sync database');
+        }
       }
-    } catch {
-      setDbStatus(liveData ? 'Live Database Synced' : 'Connecting to database...');
+    } catch (err: any) {
+      console.error('Failed to sync live database entities:', err);
+      setDbStatus('Connection failed: API offline');
+      if (isManualRefresh) {
+        showToast('Database sync failed: Unable to connect to backend API');
+      }
     } finally {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 600) {
+        await new Promise(r => setTimeout(r, 600 - elapsed));
+      }
       setIsLoading(false);
     }
-  }, [activeDatabase, databases, liveData]);
+  }, [activeDatabase, databases]);
 
   useEffect(() => {
     fetchLiveData();
@@ -736,9 +776,9 @@ export default function EntitiesPage() {
     };
   }, []);
 
-  // Enable mouse wheel horizontal scrolling on the entity cards track
+  // Enable mouse wheel horizontal scrolling on the entity cards and tabs track
   useEffect(() => {
-    const el = cardsTrackRef.current;
+    const el = viewMode === 'cards' ? cardsTrackRef.current : tabsTrackRef.current;
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
@@ -753,7 +793,7 @@ export default function EntitiesPage() {
     return () => {
       el.removeEventListener('wheel', onWheel);
     };
-  }, []);
+  }, [viewMode]);
 
   return (
     <div className="fade-in">
@@ -768,31 +808,31 @@ export default function EntitiesPage() {
               fontSize: '0.75rem',
               padding: '2px 8px',
               borderRadius: 12,
-              background: isLoading && !liveData ? '#fef3c7' : '#ecfdf5',
-              color: isLoading && !liveData ? '#b45309' : '#047857',
-              border: `1px solid ${isLoading && !liveData ? '#fde68a' : '#a7f3d0'}`,
+              background: isLoading ? '#fef3c7' : '#ecfdf5',
+              color: isLoading ? '#b45309' : '#047857',
+              border: `1px solid ${isLoading ? '#fde68a' : '#a7f3d0'}`,
               fontWeight: 500
             }}>
-              {isLoading && !liveData ? <RefreshCw size={11} className="spin" /> : <CheckCircle2 size={12} />}
-              {dbStatus}
+              {isLoading ? <RefreshCw size={11} className="spin" /> : <CheckCircle2 size={12} />}
+              {isLoading ? 'Syncing Database...' : dbStatus}
             </span>
           </div>
           <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
-            {isLoading && !liveData
+            {isLoading
               ? 'Syncing live database records...'
               : `${totalEntitiesCount} verified entities across ${availableTypes.length} database schemas`}
           </p>
         </div>
 
         <button
-          onClick={fetchLiveData}
+          onClick={() => fetchLiveData(true)}
           className="btn btn-secondary btn-sm"
           style={{ gap: 6, display: 'flex', alignItems: 'center' }}
           title="Refresh entities from live database"
           disabled={isLoading}
         >
           <RefreshCw size={13} className={isLoading ? 'spin' : ''} />
-          <span>Sync Database</span>
+          <span>{isLoading ? 'Syncing...' : 'Sync Database'}</span>
         </button>
       </div>
 
@@ -801,8 +841,10 @@ export default function EntitiesPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 8,
+        marginBottom: 10,
         marginTop: 4,
+        flexWrap: 'wrap',
+        gap: 8,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{
@@ -826,178 +868,313 @@ export default function EntitiesPage() {
           </span>
         </div>
 
-        {/* Scroll navigation controls for horizontal overflow */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button
-            onClick={() => scrollCards('left')}
-            className="card-nav-btn"
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 6,
-              background: '#ffffff',
-              border: '1px solid #cbd5e1',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: '#475569',
-            }}
-            title="Scroll categories left"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <button
-            onClick={() => scrollCards('right')}
-            className="card-nav-btn"
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 6,
-              background: '#ffffff',
-              border: '1px solid #cbd5e1',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: '#475569',
-            }}
-            title="Scroll categories right"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
+        {/* View mode toggle (Cards vs Tabs) & scroll controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Segmented Switcher for Current (Cards) and Tabs */}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            background: '#f1f5f9',
+            padding: 2,
+            borderRadius: 7,
+            border: '1px solid #e2e8f0',
+          }}>
+            <button
+              onClick={() => handleToggleView('cards')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '3px 9px',
+                borderRadius: 5,
+                border: 'none',
+                background: viewMode === 'cards' ? '#ffffff' : 'transparent',
+                color: viewMode === 'cards' ? '#0f172a' : '#64748b',
+                boxShadow: viewMode === 'cards' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                fontWeight: viewMode === 'cards' ? 700 : 500,
+                fontSize: '0.74rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title="Current Cards Carousel View"
+            >
+              <LayoutGrid size={13} />
+              <span>Cards</span>
+            </button>
+            <button
+              onClick={() => handleToggleView('tabs')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '3px 9px',
+                borderRadius: 5,
+                border: 'none',
+                background: viewMode === 'tabs' ? '#ffffff' : 'transparent',
+                color: viewMode === 'tabs' ? '#0f172a' : '#64748b',
+                boxShadow: viewMode === 'tabs' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                fontWeight: viewMode === 'tabs' ? 700 : 500,
+                fontSize: '0.74rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title="Case Page Style Tabs View"
+            >
+              <Layers size={13} />
+              <span>Tabs</span>
+            </button>
+          </div>
 
-      {/* Scalable horizontal cards carousel track — adapts to any number of entities */}
-      <div
-        ref={cardsTrackRef}
-        className="hide-table-native-scrollbar"
-        style={{
-          display: 'flex',
-          gap: 10,
-          overflowX: 'auto',
-          paddingBottom: 4,
-          marginBottom: 16,
-          scrollBehavior: 'smooth',
-          scrollbarWidth: 'none',
-        }}
-      >
-        {/* 1. All Entities Master Card */}
-        <div
-          onClick={() => handleTypeFilter('')}
-          className="entity-type-card"
-          style={{
-            minWidth: 170,
-            flex: '0 0 auto',
-            cursor: 'pointer',
-            padding: '10px 14px',
-            borderRadius: 10,
-            background: !typeFilter ? '#eff6ff' : '#ffffff',
-            border: !typeFilter ? '2px solid #2563eb' : '1px solid #e2e8f0',
-            boxShadow: !typeFilter ? '0 4px 12px rgba(37, 99, 235, 0.12)' : '0 1px 3px rgba(0, 0, 0, 0.04)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: 6,
-          }}
-          title="Show all verified entities"
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <div style={{
+          {/* Scroll navigation controls for horizontal overflow (visible in cards and tabs views) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              onClick={() => scrollCategories('left')}
+              className="card-nav-btn"
+              style={{
                 width: 26,
                 height: 26,
                 borderRadius: 6,
-                background: '#0f172a15',
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                flexShrink: 0
-              }}>
-                <Layers size={13} style={{ color: '#0f172a' }} />
-              </div>
-              <span style={{ fontSize: '0.78rem', fontWeight: !typeFilter ? 700 : 600, color: '#0f172a' }}>
-                All Entities
-              </span>
-            </div>
-            {!typeFilter && (
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb', flexShrink: 0 }} />
-            )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
-              {isLoading && !liveData ? '...' : totalEntitiesCount}
-            </div>
-            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 500 }}>
-              100%
-            </span>
+                cursor: 'pointer',
+                color: '#475569',
+              }}
+              title={viewMode === 'cards' ? 'Scroll cards left' : 'Scroll tabs left'}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              onClick={() => scrollCategories('right')}
+              className="card-nav-btn"
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 6,
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: '#475569',
+              }}
+              title={viewMode === 'cards' ? 'Scroll cards right' : 'Scroll tabs right'}
+            >
+              <ChevronRight size={14} />
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* 2. Dynamic & Future-Proof Entity Type Cards */}
-        {availableTypes.map((type) => {
-          const cfg = getTypeConfig(type);
-          const Icon = cfg.icon;
-          const count = counts[type as keyof typeof counts] || 0;
-          const isSelected = typeFilter.toLowerCase() === type.toLowerCase();
-          const percent = totalEntitiesCount > 0 ? Math.round((count / totalEntitiesCount) * 100) : 0;
-
-          return (
-            <div
-              key={type}
-              onClick={() => handleTypeFilter(type)}
-              className="entity-type-card"
-              style={{
-                minWidth: 170,
-                flex: '0 0 auto',
-                cursor: 'pointer',
-                padding: '10px 14px',
-                borderRadius: 10,
-                background: isSelected ? `${cfg.color}0a` : '#ffffff',
-                border: isSelected ? `2px solid ${cfg.color}` : '1px solid #e2e8f0',
-                boxShadow: isSelected ? `0 4px 12px ${cfg.color}25` : '0 1px 3px rgba(0, 0, 0, 0.04)',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                gap: 6,
-              }}
-              title={`Filter by ${cfg.label} (${count} records)`}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <div style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: 6,
-                    background: `${cfg.color}18`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    <Icon size={13} style={{ color: cfg.color }} />
-                  </div>
-                  <span style={{ fontSize: '0.78rem', fontWeight: isSelected ? 700 : 600, color: isSelected ? cfg.color : '#334155' }}>
-                    {cfg.label}
-                  </span>
+      {/* Conditionally Render Cards View OR Tabs View */}
+      {viewMode === 'cards' ? (
+        /* Scalable horizontal cards carousel track — adapts to any number of entities */
+        <div
+          ref={cardsTrackRef}
+          className="hide-table-native-scrollbar"
+          style={{
+            display: 'flex',
+            gap: 10,
+            overflowX: 'auto',
+            paddingBottom: 4,
+            marginBottom: 16,
+            scrollBehavior: 'smooth',
+            scrollbarWidth: 'none',
+          }}
+        >
+          {/* 1. All Entities Master Card */}
+          <div
+            onClick={() => handleTypeFilter('')}
+            className="entity-type-card"
+            style={{
+              minWidth: 170,
+              flex: '0 0 auto',
+              cursor: 'pointer',
+              padding: '10px 14px',
+              borderRadius: 10,
+              background: !typeFilter ? '#eff6ff' : '#ffffff',
+              border: !typeFilter ? '2px solid #2563eb' : '1px solid #e2e8f0',
+              boxShadow: !typeFilter ? '0 4px 12px rgba(37, 99, 235, 0.12)' : '0 1px 3px rgba(0, 0, 0, 0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: 6,
+            }}
+            title="Show all verified entities"
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <div style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 6,
+                  background: '#0f172a15',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Layers size={13} style={{ color: '#0f172a' }} />
                 </div>
-                {isSelected && (
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: '1.45rem', fontWeight: 800, color: cfg.color, lineHeight: 1 }}>
-                  {isLoading && !liveData ? '...' : count}
-                </div>
-                <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 500 }}>
-                  {percent}%
+                <span style={{ fontSize: '0.78rem', fontWeight: !typeFilter ? 700 : 600, color: '#0f172a' }}>
+                  All Entities
                 </span>
               </div>
+              {!typeFilter && (
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb', flexShrink: 0 }} />
+              )}
             </div>
-          );
-        })}
-      </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
+                {isLoading && !liveData ? '...' : totalEntitiesCount}
+              </div>
+              <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 500 }}>
+                100%
+              </span>
+            </div>
+          </div>
+
+          {/* 2. Dynamic & Future-Proof Entity Type Cards */}
+          {availableTypes.map((type) => {
+            const cfg = getTypeConfig(type);
+            const Icon = cfg.icon;
+            const count = counts[type as keyof typeof counts] || 0;
+            const isSelected = typeFilter.toLowerCase() === type.toLowerCase();
+            const percent = totalEntitiesCount > 0 ? Math.round((count / totalEntitiesCount) * 100) : 0;
+
+            return (
+              <div
+                key={type}
+                onClick={() => handleTypeFilter(type)}
+                className="entity-type-card"
+                style={{
+                  minWidth: 170,
+                  flex: '0 0 auto',
+                  cursor: 'pointer',
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  background: isSelected ? `${cfg.color}0a` : '#ffffff',
+                  border: isSelected ? `2px solid ${cfg.color}` : '1px solid #e2e8f0',
+                  boxShadow: isSelected ? `0 4px 12px ${cfg.color}25` : '0 1px 3px rgba(0, 0, 0, 0.04)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: 6,
+                }}
+                title={`Filter by ${cfg.label} (${count} records)`}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <div style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 6,
+                      background: `${cfg.color}18`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <Icon size={13} style={{ color: cfg.color }} />
+                    </div>
+                    <span style={{ fontSize: '0.78rem', fontWeight: isSelected ? 700 : 600, color: isSelected ? cfg.color : '#334155' }}>
+                      {cfg.label}
+                    </span>
+                  </div>
+                  {isSelected && (
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '1.45rem', fontWeight: 800, color: cfg.color, lineHeight: 1 }}>
+                    {isLoading && !liveData ? '...' : count}
+                  </div>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 500 }}>
+                    {percent}%
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* Tabs View matching Case page (.tabs and .tab active) */
+        <div
+          ref={tabsTrackRef}
+          className="tabs hide-table-native-scrollbar"
+          style={{
+            marginBottom: 16,
+            overflowX: 'auto',
+            display: 'flex',
+            gap: 4,
+            padding: '4px',
+            scrollBehavior: 'smooth',
+            scrollbarWidth: 'none',
+          }}
+        >
+          <button
+            className={`tab${!typeFilter ? ' active' : ''}`}
+            onClick={() => handleTypeFilter('')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontWeight: !typeFilter ? 700 : 500,
+            }}
+          >
+            <Layers size={14} style={{ color: !typeFilter ? '#2563eb' : '#64748b' }} />
+            <span>All Entities</span>
+            <span style={{
+              fontSize: '0.72rem',
+              padding: '1px 6px',
+              borderRadius: 8,
+              background: !typeFilter ? '#eff6ff' : 'rgba(0, 0, 0, 0.05)',
+              color: !typeFilter ? '#2563eb' : '#64748b',
+              fontWeight: 600,
+            }}>
+              {totalEntitiesCount}
+            </span>
+          </button>
+
+          {availableTypes.map((type) => {
+            const cfg = getTypeConfig(type);
+            const Icon = cfg.icon;
+            const count = counts[type as keyof typeof counts] || 0;
+            const isSelected = typeFilter.toLowerCase() === type.toLowerCase();
+
+            return (
+              <button
+                key={type}
+                className={`tab${isSelected ? ' active' : ''}`}
+                onClick={() => handleTypeFilter(type)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontWeight: isSelected ? 700 : 500,
+                  color: isSelected ? cfg.color : undefined,
+                }}
+              >
+                <Icon size={14} style={{ color: isSelected ? cfg.color : '#64748b' }} />
+                <span>{cfg.label}</span>
+                <span style={{
+                  fontSize: '0.72rem',
+                  padding: '1px 6px',
+                  borderRadius: 8,
+                  background: isSelected ? `${cfg.color}15` : 'rgba(0, 0, 0, 0.05)',
+                  color: isSelected ? cfg.color : '#64748b',
+                  fontWeight: 600,
+                }}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Filter, search bar and pagination above the table */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>

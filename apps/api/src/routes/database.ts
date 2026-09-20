@@ -171,6 +171,10 @@ router.get('/mongo-data', async (req: Request, res: Response): Promise<void> => 
 // GET /api/database/live-data
 // Dynamically discovers ALL tables in the connected PostgreSQL database and returns their rows
 router.get('/live-data', async (req: Request, res: Response): Promise<void> => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   const customUri = (req.query.uri as string) || (req.headers['x-database-uri'] as string);
   let client: any = null;
   let isDedicated = false;
