@@ -3,12 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import cytoscape from 'cytoscape';
 import type { Core, NodeSingular } from 'cytoscape';
 import {
-  Search, ZoomIn, ZoomOut, Maximize2, RefreshCw, Filter,
+  Search, ZoomIn, ZoomOut, Maximize2, Minimize2, RefreshCw, Filter,
   Download, Info, X, ChevronRight, Loader, Network, GitBranch,
-  FileText, Printer, ShieldAlert, CheckCircle2, ChevronDown
+  FileText, Printer, ShieldAlert, CheckCircle2, ChevronDown, Box
 } from 'lucide-react';
 import api from '../lib/api';
 import { ALL_ENTITIES, GRAPH_EDGES, FIR_RECORDS, PERSONS, TRANSACTIONS } from '../data/dataset';
+import Network3DGraph from '../components/common/Network3DGraph';
+import type { Graph3DNode, Graph3DEdge } from '../components/common/Network3DGraph';
 
 interface GraphNode {
   id: string;
@@ -17,6 +19,8 @@ interface GraphNode {
   number?: string;
   licensePlate?: string;
   accountNumber?: string;
+  risk_score?: number | string;
+  flagged?: boolean;
   [key: string]: unknown;
 }
 
@@ -29,6 +33,8 @@ interface GraphEdge {
   timestamp?: string;
   relSource?: string;
   recordRef?: string;
+  amount?: number | string;
+  duration?: number;
 }
 
 interface OfficerSummary {
@@ -78,6 +84,199 @@ function getNodeLabel(node: GraphNode): string {
   return (node.name || node.number || node.licensePlate || node.accountNumber || node.id || '').substring(0, 20);
 }
 
+function buildGraphFromLiveData(tablesData: Record<string, any[]>): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  const nodesMap = new Map<string, GraphNode>();
+  const edges: GraphEdge[] = [];
+  const edgeKeySet = new Set<string>();
+
+  const addEdge = (src: string, tgt: string, type: string, extra: Record<string, any> = {}) => {
+    if (!src || !tgt || src === tgt) return;
+    const key = `${src}->${tgt}:${type}`;
+    if (edgeKeySet.has(key)) return;
+    edgeKeySet.add(key);
+    edges.push({
+      id: `e-live-${edges.length}`,
+      source: src,
+      target: tgt,
+      type,
+      confidence: 0.92,
+      ...extra,
+    });
+  };
+
+  // 1. Persons
+  const persons = tablesData['persons'] || [];
+  for (const p of persons) {
+    const id = p.id || p.person_id;
+    if (!id) continue;
+    nodesMap.set(id, {
+      id,
+      nodeType: 'Person',
+      name: p.name || p.full_name || id,
+      alias: p.alias,
+      age: p.age,
+      gender: p.gender,
+      location: p.location || p.city,
+      risk_score: p.risk_score != null ? p.risk_score : (p.riskScore != null ? p.riskScore : 0.4),
+      flagged: Number(p.risk_score || p.riskScore || 0) >= 0.65,
+      ...p,
+    });
+  }
+
+  // 2. Vehicles
+  const vehicles = tablesData['vehicles'] || [];
+  for (const v of vehicles) {
+    const id = v.id || v.vehicle_id;
+    if (!id) continue;
+    const label = v.license_plate || v.licensePlate || `${v.make || ''} ${v.model || ''}`.trim() || id;
+    nodesMap.set(id, {
+      id,
+      nodeType: 'Vehicle',
+      licensePlate: v.license_plate || v.licensePlate || label,
+      name: label,
+      ...v,
+    });
+    const owner = v.registered_to || v.registeredTo || v.owner_id;
+    if (owner) addEdge(owner, id, 'OWNS_VEHICLE');
+  }
+
+  // 3. Phones
+  const phones = tablesData['phones'] || [];
+  for (const ph of phones) {
+    const id = ph.id || ph.phone_id;
+    if (!id) continue;
+    const num = ph.number || ph.phone_number || id;
+    nodesMap.set(id, {
+      id,
+      nodeType: 'Phone',
+      number: num,
+      name: num,
+      operator: ph.operator,
+      ...ph,
+    });
+    const owner = ph.registered_to || ph.registeredTo || ph.owner_id;
+    if (owner) addEdge(owner, id, 'OWNS_PHONE');
+  }
+
+  // 4. Organizations
+  const orgs = tablesData['organizations'] || [];
+  for (const o of orgs) {
+    const id = o.id || o.org_id;
+    if (!id) continue;
+    nodesMap.set(id, {
+      id,
+      nodeType: 'Organization',
+      name: o.name || o.org_name || id,
+      type: o.type,
+      location: o.location || o.city,
+      ...o,
+    });
+  }
+
+  // 5. Locations
+  const locs = tablesData['locations'] || [];
+  for (const l of locs) {
+    const id = l.id || l.location_id;
+    if (!id) continue;
+    nodesMap.set(id, {
+      id,
+      nodeType: 'Location',
+      name: l.name || l.city || id,
+      ...l,
+    });
+  }
+
+  // 6. Bank Accounts
+  const accounts = tablesData['bank_accounts'] || [];
+  for (const a of accounts) {
+    const id = a.id || a.account_id;
+    if (!id) continue;
+    const accNum = a.account_number || a.accountNumber || id;
+    nodesMap.set(id, {
+      id,
+      nodeType: 'Account',
+      accountNumber: accNum,
+      name: accNum,
+      bank: a.bank_name || a.bank,
+      ...a,
+    });
+    const owner = a.account_holder_id || a.person_id || a.owner_id;
+    if (owner) addEdge(owner, id, 'OWNS_ACCOUNT');
+  }
+
+  // 7. Cases & FIRs
+  const cases = tablesData['cases'] || tablesData['fir_records'] || [];
+  for (const c of cases) {
+    const id = c.id || c.case_id || c.fir_id;
+    if (!id) continue;
+    const caseNum = c.case_number || c.fir_number || c.firNumber || c.title || id;
+    nodesMap.set(id, {
+      id,
+      nodeType: 'Case',
+      name: caseNum,
+      firNumber: caseNum,
+      title: c.title,
+      status: c.status,
+      ...c,
+    });
+  }
+
+  // 8. Call records
+  const calls = tablesData['call_records'] || [];
+  for (const cl of calls) {
+    const src = cl.caller_phone_id || cl.caller_id || cl.from_phone;
+    const tgt = cl.receiver_phone_id || cl.receiver_id || cl.to_phone;
+    if (src && tgt) {
+      addEdge(src, tgt, 'CALLED', {
+        confidence: 0.95,
+        duration: cl.duration,
+        timestamp: cl.timestamp || cl.call_time,
+      });
+    }
+  }
+
+  // 9. Transactions
+  const txs = tablesData['transactions'] || [];
+  for (const tx of txs) {
+    const src = tx.sender_account_id || tx.sender_id || tx.from_account;
+    const tgt = tx.receiver_account_id || tx.receiver_id || tx.to_account;
+    if (src && tgt) {
+      addEdge(src, tgt, 'TRANSFERRED', {
+        confidence: 0.98,
+        amount: tx.amount,
+        timestamp: tx.timestamp || tx.transaction_time,
+      });
+    }
+  }
+
+  // 10. Enrich with GRAPH_EDGES
+  for (const ge of GRAPH_EDGES) {
+    if (nodesMap.has(ge.source) && nodesMap.has(ge.target)) {
+      addEdge(ge.source, ge.target, ge.type || 'CONNECTED_TO', {
+        confidence: ge.confidence || 0.85,
+        relSource: (ge as any).source_ref,
+      });
+    }
+  }
+
+  // Fallback if empty
+  if (nodesMap.size === 0) {
+    for (const e of (ALL_ENTITIES as any[])) {
+      nodesMap.set(e.id, {
+        id: e.id,
+        nodeType: e.nodeType,
+        name: e.name || e.number || e.licensePlate || e.accountNumber || e.id,
+        ...e,
+      });
+    }
+  }
+
+  const allNodesList = Array.from(nodesMap.values());
+  const validEdges = edges.filter(e => nodesMap.has(e.source) && nodesMap.has(e.target));
+
+  return { nodes: allNodesList, edges: validEdges };
+}
+
 export default function NetworkGraphPage() {
   const [searchParams] = useSearchParams();
   const investigationCase = searchParams.get('investigation');
@@ -85,6 +284,10 @@ export default function NetworkGraphPage() {
   const entityTypeParam = searchParams.get('entityType') || 'Person';
   const cyRef = useRef<HTMLDivElement>(null);
   const cyInstance = useRef<Core | null>(null);
+  const [viewDimension, setViewDimension] = useState<'2d' | '3d'>('2d');
+  const [layoutName, setLayoutName] = useState<'cose' | 'concentric' | 'circle' | 'breadthfirst' | 'grid'>('cose');
+  const [allNodes, setAllNodes] = useState<GraphNode[]>([]);
+  const [allEdges, setAllEdges] = useState<GraphEdge[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
@@ -102,6 +305,63 @@ export default function NetworkGraphPage() {
   const [graphPeople, setGraphPeople] = useState<GraphNode[]>([]);
   const [showDossierModal, setShowDossierModal] = useState(false);
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const graphContainerRef = useRef<HTMLDivElement>(null);
+
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen(prev => {
+      const next = !prev;
+      if (next) {
+        const elem = graphContainerRef.current;
+        if (elem && elem.requestFullscreen && !document.fullscreenElement) {
+          elem.requestFullscreen().catch(() => { });
+        }
+      } else {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => { });
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isNativeFs = Boolean(document.fullscreenElement);
+      setIsFullscreen(isNativeFs);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => { });
+        }
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreen]);
+
+  // When fullscreen changes, trigger cytoscape resize and fit
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (cyInstance.current) {
+        cyInstance.current.resize();
+        cyInstance.current.fit(undefined, 40);
+      }
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [isFullscreen]);
 
   const initCytoscape = useCallback(() => {
     if (!cyRef.current) return;
@@ -119,21 +379,21 @@ export default function NetworkGraphPage() {
             'background-color': (ele: NodeSingular) => NODE_COLORS[ele.data('nodeType')] || '#64748b',
             'shape': (ele: NodeSingular) => (NODE_SHAPES[ele.data('nodeType')] || 'ellipse') as any,
             'label': 'data(label)',
-            'color': '#1e293b',
-            'font-size': '10px',
+            'color': '#f8fafc',
+            'font-size': '11px',
             'font-family': 'Inter, sans-serif',
             'font-weight': '600',
             'text-valign': 'bottom',
             'text-halign': 'center',
-            'text-margin-y': '4px',
-            'width': 36,
-            'height': 36,
-            'border-width': 3,
-            'border-color': 'white',
-            'border-opacity': 1,
-            'text-outline-width': 2,
-            'text-outline-color': '#f0f4f8',
-            'text-max-width': '90px',
+            'text-margin-y': '5px',
+            'width': 38,
+            'height': 38,
+            'border-width': 2.5,
+            'border-color': 'rgba(255,255,255,0.85)',
+            'border-opacity': 0.95,
+            'text-outline-width': 3,
+            'text-outline-color': '#0b0f19',
+            'text-max-width': '95px',
             'text-wrap': 'ellipsis',
             'overlay-padding': '4px',
           },
@@ -142,9 +402,12 @@ export default function NetworkGraphPage() {
           selector: 'node:selected',
           style: {
             'border-width': 4,
-            'border-color': '#1e293b',
-            'width': 44,
-            'height': 44,
+            'border-color': '#3b82f6',
+            'width': 46,
+            'height': 46,
+            'shadow-blur': 18,
+            'shadow-color': '#3b82f6',
+            'shadow-opacity': 0.8,
           },
         },
         {
@@ -152,37 +415,51 @@ export default function NetworkGraphPage() {
           style: {
             'border-width': 4,
             'border-color': '#f59e0b',
+            'shadow-blur': 16,
+            'shadow-color': '#f59e0b',
+            'shadow-opacity': 0.85,
+          },
+        },
+        {
+          selector: 'node.flagged-target',
+          style: {
+            'border-width': 3.5,
+            'border-color': '#ef4444',
+            'shadow-blur': 14,
+            'shadow-color': '#ef4444',
+            'shadow-opacity': 0.8,
           },
         },
         {
           selector: 'node.dimmed',
-          style: { 'opacity': 0.2 },
+          style: { 'opacity': 0.18 },
         },
         {
           selector: 'edge',
           style: {
-            'width': 1.5,
-            'line-color': '#94a3b8',
-            'target-arrow-color': '#94a3b8',
+            'width': 1.8,
+            'line-color': '#475569',
+            'target-arrow-color': '#64748b',
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             'label': 'data(label)',
-            'color': '#475569',
+            'color': '#94a3b8',
             'font-size': '9px',
             'font-weight': '500',
-            'text-background-color': '#f0f4f8',
-            'text-background-opacity': 0.9,
-            'text-background-padding': '2px',
+            'text-background-color': '#090d16',
+            'text-background-opacity': 0.85,
+            'text-background-padding': '3px',
+            'text-background-shape': 'roundrectangle',
             'edge-text-rotation': 'autorotate',
-            'opacity': 0.8,
+            'opacity': 0.75,
           },
         },
         {
           selector: 'edge:selected',
           style: {
-            'line-color': '#2563eb',
-            'target-arrow-color': '#2563eb',
-            'width': 2.5,
+            'line-color': '#3b82f6',
+            'target-arrow-color': '#3b82f6',
+            'width': 3,
             'opacity': 1,
           },
         },
@@ -191,7 +468,7 @@ export default function NetworkGraphPage() {
           style: {
             'line-color': '#f59e0b',
             'target-arrow-color': '#f59e0b',
-            'width': 3,
+            'width': 3.2,
             'opacity': 1,
           },
         },
@@ -246,6 +523,37 @@ export default function NetworkGraphPage() {
     return cy;
   }, [pathMode]);
 
+  const applyLayout = (name: string) => {
+    setLayoutName(name as any);
+    if (!cyInstance.current) return;
+    try {
+      let options: any = { name, animate: true, animationDuration: 600 };
+      if (name === 'cose') {
+        options = {
+          ...options,
+          randomize: false,
+          componentSpacing: 100,
+          nodeRepulsion: () => 8000,
+          idealEdgeLength: () => 100,
+          edgeElasticity: () => 100,
+        };
+      } else if (name === 'concentric') {
+        options = {
+          ...options,
+          concentric: (ele: any) => ele.data('risk_score') ? Number(ele.data('risk_score')) * 10 : 2,
+          levelWidth: () => 2,
+        };
+      } else if (name === 'circle') {
+        options = { ...options, radius: 260 };
+      } else if (name === 'breadthfirst') {
+        options = { ...options, directed: true, spacingFactor: 1.25 };
+      }
+      cyInstance.current.layout(options).run();
+    } catch (err) {
+      console.warn('Layout switch error:', err);
+    }
+  };
+
   // Load the selected investigation network, or the overall network by default.
   useEffect(() => {
     const cy = initCytoscape();
@@ -254,12 +562,17 @@ export default function NetworkGraphPage() {
   }, [investigationCase, entityIdParam, entityTypeParam]);
 
   const renderGraph = (cy: Core, nodes: GraphNode[], edges: GraphEdge[]) => {
-    cy.elements().remove();
-
     const nodeIds = new Set(nodes.map(n => n.id));
-
     // Ensure we never pass edges with missing source or target, which crashes Cytoscape!
     const validEdges = edges.filter(e => e && e.source && e.target && nodeIds.has(e.source) && nodeIds.has(e.target));
+
+    setAllNodes(nodes);
+    setAllEdges(validEdges);
+    setNodeCount(nodes.length);
+    setEdgeCount(validEdges.length);
+    setGraphPeople(nodes.filter(node => node.nodeType === 'Person').slice(0, 12));
+
+    cy.elements().remove();
 
     const cyNodes = nodes.map(n => ({
       group: 'nodes' as const,
@@ -269,6 +582,7 @@ export default function NetworkGraphPage() {
         nodeType: n.nodeType,
         ...n,
       },
+      classes: (n.flagged || Number(n.risk_score || 0) >= 0.65) ? 'flagged-target' : '',
     }));
 
     const cyEdges = validEdges.map((e, i) => ({
@@ -294,7 +608,7 @@ export default function NetworkGraphPage() {
 
     try {
       cy.layout({
-        name: 'cose',
+        name: layoutName,
         randomize: true,
         animate: true,
         animationDuration: 800,
@@ -473,38 +787,71 @@ export default function NetworkGraphPage() {
 
   const loadDemoNetwork = async (cy?: Core) => {
     const instance = cy || cyInstance.current;
-    if (!instance) return;
     setLoading(true);
 
     let fetchedNodes: GraphNode[] | null = null;
     let fetchedEdges: GraphEdge[] | null = null;
 
     try {
-      const res = investigationCase
-        ? await api.get(`/api/graph/investigation/${encodeURIComponent(investigationCase)}`)
-        : entityIdParam
-          ? await api.get(`/api/entities/${encodeURIComponent(entityTypeParam)}/${encodeURIComponent(entityIdParam)}/network?depth=2&limit=80`)
-          : await api.get('/api/entities/Person/P001/network?depth=2&limit=80');
+      if (investigationCase) {
+        const res = await api.get(`/api/graph/investigation/${encodeURIComponent(investigationCase)}`);
+        if (res.data?.nodes && res.data.nodes.length > 0) {
+          fetchedNodes = res.data.nodes;
+          fetchedEdges = res.data.edges || [];
+        }
+      } else if (entityIdParam) {
+        const res = await api.get(`/api/entities/${encodeURIComponent(entityTypeParam)}/${encodeURIComponent(entityIdParam)}/network?depth=2&limit=80`);
+        if (res.data?.nodes && res.data.nodes.length > 0) {
+          fetchedNodes = res.data.nodes;
+          fetchedEdges = res.data.edges || [];
+        }
+      } else {
+        // Query live database first to display real PostgreSQL tables
+        try {
+          const liveRes = await api.get('/api/database/live-data?limit=2000');
+          if (liveRes.data?.data && Object.keys(liveRes.data.data).length > 0) {
+            const { nodes, edges } = buildGraphFromLiveData(liveRes.data.data);
+            if (nodes.length > 0) {
+              fetchedNodes = nodes;
+              fetchedEdges = edges;
+            }
+          }
+        } catch {
+          // Fall through to Neo4j endpoint or local fallback
+        }
 
-      if (res.data?.nodes && res.data.nodes.length > 0) {
-        fetchedNodes = res.data.nodes;
-        fetchedEdges = res.data.edges || [];
+        if (!fetchedNodes) {
+          try {
+            const res = await api.get('/api/entities/Person/P001/network?depth=2&limit=80');
+            if (res.data?.nodes && res.data.nodes.length > 0) {
+              fetchedNodes = res.data.nodes;
+              fetchedEdges = res.data.edges || [];
+            }
+          } catch {
+            // Fall through to demo graph
+          }
+        }
       }
     } catch {
-      // API request failed or Neo4j offline; proceed to fallback
+      // API request failed or offline; proceed to fallback
     } finally {
       setLoading(false);
     }
 
     if (fetchedNodes && fetchedNodes.length > 0) {
-      renderGraph(instance, fetchedNodes, fetchedEdges || []);
+      if (instance) {
+        renderGraph(instance, fetchedNodes, fetchedEdges || []);
+      } else {
+        setAllNodes(fetchedNodes);
+        setAllEdges(fetchedEdges || []);
+      }
     } else {
       if (investigationCase) {
-        renderInvestigationFallback(instance, investigationCase);
+        if (instance) renderInvestigationFallback(instance, investigationCase);
       } else if (entityIdParam) {
-        renderEntityFallback(instance, entityIdParam, entityTypeParam);
+        if (instance) renderEntityFallback(instance, entityIdParam, entityTypeParam);
       } else {
-        renderDemoGraph(instance);
+        if (instance) renderDemoGraph(instance);
       }
     }
   };
@@ -681,80 +1028,141 @@ export default function NetworkGraphPage() {
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <div className="search-input-wrapper" style={{ flex: 1 }}>
-            <Search size={14} className="search-icon" />
+          <div className="search-input-wrapper" style={{ flex: 1, position: 'relative' }}>
+            <Search
+              size={14}
+              className="search-icon"
+              style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+              onClick={handleSearch}
+              title="Click or press Enter to search"
+            />
             <input
-              type="text" className="form-input"
-              placeholder="Search entity to focus..."
+              type="text"
+              className="form-input"
+              placeholder="Search entity to focus (press Enter)..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
             />
           </div>
-          <button className="btn btn-primary btn-sm" onClick={handleSearch}>Search</button>
         </div>
 
-        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-          {/* Path finder */}
-          <button
-            className={`btn btn-sm ${pathMode ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => { setPathMode(v => !v); setPathNodes([]); setPathResult(null); }}
-            title="Find shortest path between two nodes"
-          >
-            <GitBranch size={14} /> Path Finder
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={resetGraph} title="Reset view">
-            <RefreshCw size={14} />
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => cyInstance.current?.zoom({ level: cyInstance.current.zoom() * 1.2 })} title="Zoom in">
-            <ZoomIn size={14} />
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => cyInstance.current?.zoom({ level: cyInstance.current.zoom() * 0.8 })} title="Zoom out">
-            <ZoomOut size={14} />
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => cyInstance.current?.fit(undefined, 40)} title="Fit all">
-            <Maximize2 size={14} />
-          </button>
-          <div style={{ position: 'relative' }}>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setExportDropdownOpen(v => !v)}
-              title="Export options"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg, #1e40af, #3b82f6)' }}
-            >
-              <Download size={14} /> Export <ChevronDown size={12} />
-            </button>
-            {exportDropdownOpen && (
-              <div
-                style={{
-                  position: 'absolute', right: 0, top: '100%', marginTop: 6, zIndex: 1000,
-                  background: 'var(--surface-1, #111827)', border: '1px solid var(--border-primary, #374151)',
-                  borderRadius: 8, padding: 6, minWidth: 220, boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
-                  display: 'flex', flexDirection: 'column', gap: 4,
-                }}
-              >
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => { setExportDropdownOpen(false); exportGraph(); }}
-                  style={{ justifyContent: 'flex-start', gap: 8, width: '100%', textAlign: 'left' }}
+        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Integrated Inline Switch & Layout Bar with locked fixed height */}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            height: 36,
+            minHeight: 36,
+            maxHeight: 36,
+            boxSizing: 'border-box',
+            background: 'var(--bg-elevated, #f1f5f9)',
+            padding: '3px 4px',
+            borderRadius: 'var(--radius-md, 8px)',
+            border: '1px solid var(--border-primary, #cbd5e1)',
+            boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04))',
+            flexShrink: 0,
+            whiteSpace: 'nowrap',
+          }}>
+            {/* 2D Layout Selector to the LEFT of the 2D graph button */}
+            {viewDimension === '2d' && (
+              <>
+                <select
+                  value={layoutName}
+                  onChange={e => applyLayout(e.target.value)}
+                  style={{
+                    fontSize: '0.78rem',
+                    height: 28,
+                    minHeight: 28,
+                    maxHeight: 28,
+                    lineHeight: '26px',
+                    boxSizing: 'border-box',
+                    padding: '0 8px',
+                    minWidth: 150,
+                    background: '#ffffff',
+                    border: '1px solid var(--border-primary, #cbd5e1)',
+                    color: 'var(--text-primary, #0f172a)',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                    outline: 'none',
+                    margin: 0,
+                  }}
+                  title="Change 2D Graph Layout"
                 >
-                  <Download size={14} /> Download Graph (PNG)
-                </button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={() => { setExportDropdownOpen(false); setShowDossierModal(true); }}
-                  style={{ justifyContent: 'flex-start', gap: 8, width: '100%', textAlign: 'left', background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                >
-                  <FileText size={14} /> Generate NCRB Dossier
-                </button>
-              </div>
+                  <option value="cose">Layout: Force / Physics</option>
+                  <option value="concentric">Layout: Concentric Rings</option>
+                  <option value="circle">Layout: Circular Orbit</option>
+                  <option value="breadthfirst">Layout: Hierarchy Tree</option>
+                  <option value="grid">Layout: Matrix Grid</option>
+                </select>
+                <div style={{ width: 1, height: 18, background: 'var(--border-primary, #cbd5e1)', margin: '0 2px', flexShrink: 0 }} />
+              </>
             )}
+
+            <button
+              type="button"
+              onClick={() => setViewDimension('2d')}
+              style={{
+                height: 28,
+                minHeight: 28,
+                maxHeight: 28,
+                boxSizing: 'border-box',
+                borderRadius: 6,
+                padding: '0 10px',
+                fontSize: '0.78rem',
+                gap: 6,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: viewDimension === '2d' ? 600 : 500,
+                whiteSpace: 'nowrap',
+                border: 'none',
+                background: viewDimension === '2d' ? '#ffffff' : 'transparent',
+                color: viewDimension === '2d' ? 'var(--accent-primary, #2563eb)' : 'var(--text-tertiary, #475569)',
+                boxShadow: viewDimension === '2d' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                margin: 0,
+              }}
+            >
+              <Network size={14} /> 2D Graph
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewDimension('3d')}
+              style={{
+                height: 28,
+                minHeight: 28,
+                maxHeight: 28,
+                boxSizing: 'border-box',
+                borderRadius: 6,
+                padding: '0 10px',
+                fontSize: '0.78rem',
+                gap: 6,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: viewDimension === '3d' ? 600 : 500,
+                whiteSpace: 'nowrap',
+                border: 'none',
+                background: viewDimension === '3d' ? 'linear-gradient(135deg, #2563eb, #7c3aed)' : 'transparent',
+                color: viewDimension === '3d' ? '#ffffff' : 'var(--text-tertiary, #475569)',
+                boxShadow: viewDimension === '3d' ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                margin: 0,
+              }}
+            >
+              <Box size={14} /> 3D Space
+            </button>
           </div>
         </div>
       </div>
 
       {/* Path finder bar */}
-      {pathMode && (
+      {pathMode && viewDimension === '2d' && (
         <div style={{
           padding: '10px 14px', background: 'rgba(59,130,246,0.08)',
           border: '1px solid rgba(59,130,246,0.2)', borderRadius: 10,
@@ -783,61 +1191,288 @@ export default function NetworkGraphPage() {
       )}
 
       {/* Main graph area */}
-      <div style={{ flex: 1, display: 'flex', gap: 12, minHeight: 0 }}>
-        {/* Graph canvas */}
-        <div className="graph-container" style={{ flex: 1, position: 'relative' }}>
+      <div
+        ref={graphContainerRef}
+        data-fullscreen={isFullscreen ? 'true' : 'false'}
+        style={{
+          flex: 1,
+          display: 'flex',
+          gap: isFullscreen ? 0 : 12,
+          minHeight: 0,
+          ...(isFullscreen ? {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 9999,
+            background: '#080c18',
+            padding: 0,
+            margin: 0,
+            border: 'none',
+            borderRadius: 0,
+            boxSizing: 'border-box',
+          } : {})
+        }}
+      >
+        {/* Graph canvas container */}
+        <div
+          className="graph-container"
+          style={{
+            flex: 1,
+            position: 'relative',
+            overflow: 'hidden',
+            ...(isFullscreen ? {
+              border: 'none',
+              borderRadius: 0,
+              boxShadow: 'none',
+              margin: 0,
+              padding: 0,
+            } : {})
+          }}
+        >
+          {/* Top-Right Floating Canvas Controls */}
+          {(viewDimension === '2d' || isFullscreen) && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 14,
+                right: 14,
+                zIndex: 25,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              {/* When in Fullscreen: button to switch 2D / 3D */}
+              {isFullscreen && (
+                <button
+                  type="button"
+                  onClick={() => setViewDimension(viewDimension === '2d' ? '3d' : '2d')}
+                  title={viewDimension === '2d' ? 'Switch to 3D Space' : 'Switch to 2D Graph'}
+                  style={{
+                    height: 34,
+                    padding: '0 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: '#ffffff',
+                    color: 'var(--text-primary, #0f172a)',
+                    border: '1px solid var(--border-primary, #cbd5e1)',
+                    borderRadius: 8,
+                    boxShadow: '0 2px 10px rgba(0, 0, 0, 0.15)',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {viewDimension === '2d' ? (
+                    <>
+                      <Box size={14} color="#2563eb" />
+                      <span>Switch to 3D</span>
+                    </>
+                  ) : (
+                    <>
+                      <Network size={14} color="#2563eb" />
+                      <span>Switch to 2D</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Fullscreen Toggle Button */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? 'Exit Fullscreen (Esc / F11)' : 'Full Screen (F11)'}
+                style={{
+                  width: 34,
+                  height: 34,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#ffffff',
+                  color: 'var(--text-primary, #0f172a)',
+                  border: '1px solid var(--border-primary, #cbd5e1)',
+                  borderRadius: 8,
+                  boxShadow: '0 2px 10px rgba(0, 0, 0, 0.15)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+            </div>
+          )}
+
           {loading && (
             <div style={{
               position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: 12,
-              background: 'rgba(8, 12, 24, 0.7)', zIndex: 10, borderRadius: 14,
+              background: 'rgba(8, 12, 24, 0.75)', zIndex: 30, borderRadius: 14,
             }}>
               <div className="loading-spinner" style={{ width: 40, height: 40, borderWidth: 3 }} />
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading network graph...</span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading intelligence network...</span>
             </div>
           )}
 
-          <div ref={cyRef} style={{ width: '100%', height: '100%' }} />
+          {/* 2D Cytoscape container */}
+          <div
+            ref={cyRef}
+            style={{
+              width: '100%',
+              height: '100%',
+              display: viewDimension === '2d' ? 'block' : 'none',
+            }}
+          />
 
-          {/* Graph stats overlay */}
-          <div style={{
-            position: 'absolute', bottom: 12, left: 12,
-            display: 'flex', gap: 8, flexWrap: 'wrap',
-          }}>
+          {/* 3D WebGL Three.js container */}
+          {viewDimension === '3d' && (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
+              <Network3DGraph
+                nodes={allNodes as Graph3DNode[]}
+                edges={allEdges as Graph3DEdge[]}
+                selectedNodeId={selectedNode?.id}
+                onSelectNode={node => setSelectedNode(node as GraphNode | null)}
+                onSelectEdge={edge => setSelectedEdge(edge as GraphEdge | null)}
+                isFullscreen={isFullscreen}
+              />
+            </div>
+          )}
+
+          {/* 2D Graph stats overlay */}
+          {viewDimension === '2d' && (
             <div style={{
-              padding: '4px 10px', background: 'rgba(255,255,255,0.92)',
-              border: '1px solid var(--border-primary)', borderRadius: 6,
-              fontSize: '0.72rem', color: 'var(--text-tertiary)',
-              boxShadow: 'var(--shadow-sm)',
+              position: 'absolute', bottom: 12, left: 12,
+              display: 'flex', gap: 8, flexWrap: 'wrap', zIndex: 10,
             }}>
-              {nodeCount} nodes · {edgeCount} edges
-            </div>
-            <div className="ai-disclaimer" style={{ padding: '4px 10px', fontSize: '0.7rem' }}>
-              Graph shows analytical relationships — not proof of wrongdoing
-            </div>
-          </div>
-
-          {/* Node Legend */}
-          <div style={{
-            position: 'absolute', top: 12, left: 12,
-            background: 'rgba(255,255,255,0.95)', border: '1px solid var(--border-primary)',
-            borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 5,
-            boxShadow: 'var(--shadow-md)',
-          }}>
-            {Object.entries(NODE_COLORS).map(([type, color]) => (
-              <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: color, display: 'block', flexShrink: 0 }} />
-                {NODE_ICONS[type]} {type}
+              <div style={{
+                padding: '5px 12px', background: 'rgba(15, 23, 42, 0.88)',
+                backdropFilter: 'blur(8px)', border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: 8, fontSize: '0.74rem', color: '#cbd5e1',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+              }}>
+                <strong style={{ color: '#38bdf8' }}>{nodeCount}</strong> nodes · <strong style={{ color: '#38bdf8' }}>{edgeCount}</strong> edges
               </div>
-            ))}
-          </div>
+              <div className="ai-disclaimer" style={{ padding: '5px 12px', fontSize: '0.72rem' }}>
+                Analytical relationships — not proof of wrongdoing
+              </div>
+            </div>
+          )}
+
+          {/* 2D Floating Zoom & Reset Controls at Right Bottom */}
+          {viewDimension === '2d' && (
+            <div style={{
+              position: 'absolute',
+              bottom: 14,
+              right: 14,
+              zIndex: 25,
+              display: 'flex',
+              flexDirection: 'column',
+              background: '#ffffff',
+              borderRadius: 8,
+              border: '1px solid var(--border-primary, #cbd5e1)',
+              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.12)',
+              overflow: 'hidden',
+            }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => cyInstance.current?.zoom({ level: cyInstance.current.zoom() * 1.25 })}
+                title="Zoom In"
+                style={{
+                  padding: '7px 9px',
+                  borderRadius: 0,
+                  borderBottom: '1px solid var(--border-primary, #e2e8f0)',
+                  color: 'var(--text-primary, #0f172a)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <ZoomIn size={15} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => cyInstance.current?.zoom({ level: cyInstance.current.zoom() * 0.8 })}
+                title="Zoom Out"
+                style={{
+                  padding: '7px 9px',
+                  borderRadius: 0,
+                  borderBottom: '1px solid var(--border-primary, #e2e8f0)',
+                  color: 'var(--text-primary, #0f172a)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <ZoomOut size={15} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={resetGraph}
+                title="Reset View"
+                style={{
+                  padding: '7px 9px',
+                  borderRadius: 0,
+                  color: 'var(--text-primary, #0f172a)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <RefreshCw size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* 2D Node Legend */}
+          {viewDimension === '2d' && (
+            <div style={{
+              position: 'absolute', top: 12, left: 12,
+              background: 'rgba(15, 23, 42, 0.88)', backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: 10, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)', zIndex: 10,
+            }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 2 }}>
+                Entity Legend
+              </span>
+              {Object.entries(NODE_COLORS).map(([type, color]) => (
+                <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.74rem', color: '#e2e8f0' }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 2, background: color, display: 'block', flexShrink: 0, boxShadow: `0 0 6px ${color}88` }} />
+                  {NODE_ICONS[type]} {type}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Right panel — entity details */}
         {(selectedNode || selectedEdge) && (
           <div className="slide-in-right" style={{
-            width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12,
+            width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12,
             overflowY: 'auto', maxHeight: '100%',
+            ...(isFullscreen ? {
+              background: 'rgba(15, 23, 42, 0.95)',
+              backdropFilter: 'blur(16px)',
+              borderLeft: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: 0,
+              margin: 0,
+              padding: 16,
+              zIndex: 30,
+            } : {})
           }}>
             {selectedNode && (
               <div className="card" style={{ flex: 'none' }}>
@@ -1009,7 +1644,7 @@ export default function NetworkGraphPage() {
 
             {/* Printable Dossier Content */}
             <div style={{ padding: '24px 28px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
-              
+
               {/* Header */}
               <div style={{ textAlign: 'center', borderBottom: '2px solid #1e3a8a', paddingBottom: 16 }}>
                 <div style={{ fontSize: '0.75rem', letterSpacing: '0.15em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4 }}>
