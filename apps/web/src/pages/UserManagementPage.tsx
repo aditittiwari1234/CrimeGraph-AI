@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Plus, Pencil, Trash2, Camera, X, Save, Search, UserCheck, Users,
+  Plus, Pencil, Trash2, Camera, X, Save, Search, UserCheck, UserX, Users,
   Shield, CheckCircle2, RefreshCw, Eye, EyeOff, AlertCircle,
   Copy, Check, FileText, Mail, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
@@ -502,6 +502,16 @@ export default function UserManagementPage() {
     });
   };
 
+  const handleToggleAccess = async (targetUser: User) => {
+    const willBeActive = targetUser.isActive === false;
+    try {
+      await updateManagedUser(targetUser.id, { isActive: willBeActive });
+      showToast(willBeActive ? `Access granted for @${targetUser.username}` : `Access revoked for @${targetUser.username}`);
+    } catch (err: any) {
+      showToast(`Failed to update access: ${err.message}`);
+    }
+  };
+
   const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
     if (!contextMenu) return [];
     const { targetUser, colKey, colValue } = contextMenu;
@@ -509,29 +519,37 @@ export default function UserManagementPage() {
 
     items.push({
       label: 'Edit User Profile',
-      sublabel: `Edit ${targetUser.fullName}`,
       icon: Pencil,
       iconColor: '#2563eb',
       onClick: () => openEdit(targetUser),
     });
 
     items.push({
-      label: `Audit Logs for @${targetUser.username}`,
-      sublabel: 'View cryptographic actions trail',
+      label: 'Audit Logs',
       icon: FileText,
       iconColor: '#7c3aed',
       onClick: () => navigate(`/audit?user=${encodeURIComponent(targetUser.username)}`),
-      dividerAfter: true,
+      dividerAfter: targetUser.id === currentUser?.id,
     });
+
+    if (targetUser.id !== currentUser?.id) {
+      items.push({
+        label: targetUser.isActive !== false ? 'Revoke Access' : 'Grant Access',
+        icon: targetUser.isActive !== false ? UserX : UserCheck,
+        iconColor: targetUser.isActive !== false ? '#ea580c' : '#16a34a',
+        onClick: () => handleToggleAccess(targetUser),
+        dividerAfter: true,
+      });
+    }
 
     if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
       const displayVal = String(colValue);
       const truncated = displayVal.length > 30 ? displayVal.slice(0, 30) + '...' : displayVal;
       items.push({
-        label: `Copy Cell Value (${formatHeader(colKey)})`,
+        label: `Copy ${formatHeader(colKey)}`,
         sublabel: `"${truncated}"`,
-        icon: Copy,
-        iconColor: '#059669',
+        icon: colKey === 'email' ? Mail : Copy,
+        iconColor: colKey === 'email' ? undefined : '#059669',
         onClick: () => {
           navigator.clipboard.writeText(displayVal);
           showToast(`Copied ${formatHeader(colKey)}: "${truncated}" to clipboard!`);
@@ -548,30 +566,18 @@ export default function UserManagementPage() {
           navigator.clipboard.writeText(targetUser.username);
           showToast(`Copied @${targetUser.username} to clipboard!`);
         },
-        dividerAfter: colKey === 'email' || (!targetUser.email && targetUser.id !== currentUser?.id),
       });
     }
 
     if (targetUser.email && colKey !== 'email') {
       items.push({
-        label: 'Copy Email Address',
+        label: 'Copy Email',
         sublabel: targetUser.email,
         icon: Mail,
         onClick: () => {
           navigator.clipboard.writeText(targetUser.email);
-          showToast('Copied email address to clipboard!');
+          showToast(`Copied ${targetUser.email} to clipboard!`);
         },
-        dividerAfter: targetUser.id !== currentUser?.id,
-      });
-    }
-
-    if (targetUser.id !== currentUser?.id) {
-      items.push({
-        label: 'Delete User Account',
-        sublabel: `Remove @${targetUser.username}`,
-        icon: Trash2,
-        danger: true,
-        onClick: () => setDeleteConfirm(targetUser.id),
       });
     }
 
@@ -1218,6 +1224,24 @@ export default function UserManagementPage() {
                         >
                           <Pencil size={11} /> Edit
                         </button>
+                        {u.id !== currentUser?.id && (
+                          <button
+                            onClick={() => handleToggleAccess(u)}
+                            style={{
+                              padding: '4px 8px', borderRadius: 5,
+                              background: u.isActive !== false ? '#fff7ed' : '#f0fdf4',
+                              border: u.isActive !== false ? '1px solid #fed7aa' : '1px solid #bbf7d0',
+                              color: u.isActive !== false ? '#c2410c' : '#15803d',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600,
+                              whiteSpace: 'nowrap'
+                            }}
+                            title={u.isActive !== false ? `Revoke access for @${u.username}` : `Grant access for @${u.username}`}
+                          >
+                            {u.isActive !== false ? <UserX size={11} /> : <UserCheck size={11} />}
+                            {u.isActive !== false ? 'Revoke Access' : 'Grant Access'}
+                          </button>
+                        )}
                         {u.id !== currentUser?.id && (
                           <button
                             onClick={() => setDeleteConfirm(u.id)}

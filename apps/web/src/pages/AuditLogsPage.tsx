@@ -206,7 +206,7 @@ export default function AuditLogsPage() {
       const displayVal = typeof colValue === 'object' ? JSON.stringify(colValue) : String(colValue);
       const truncated = displayVal.length > 30 ? displayVal.slice(0, 30) + '...' : displayVal;
       items.push({
-        label: `Copy Cell Value (${formatHeader(colKey)})`,
+        label: `Copy ${formatHeader(colKey)}`,
         sublabel: `"${truncated}"`,
         icon: Copy,
         iconColor: '#059669',
