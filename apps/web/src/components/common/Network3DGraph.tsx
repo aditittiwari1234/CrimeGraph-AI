@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
-  RotateCw, ZoomIn, ZoomOut, Maximize2, Play, Pause,
-  Layers, Eye, RefreshCw, Sparkles, Filter
+  RotateCw, ZoomIn, ZoomOut, Maximize2, Minimize2, Play, Pause,
+  Layers, Eye, EyeOff, RefreshCw, Sparkles, Filter
 } from 'lucide-react';
 
 export interface Graph3DNode {
@@ -37,6 +37,8 @@ interface Network3DGraphProps {
   selectedNodeId?: string | null;
   onSelectNode: (node: Graph3DNode | null) => void;
   onSelectEdge?: (edge: Graph3DEdge | null) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -68,6 +70,8 @@ export default function Network3DGraph({
   edges,
   selectedNodeId,
   onSelectNode,
+  isFullscreen,
+  onToggleFullscreen,
 }: Network3DGraphProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [autoRotate, setAutoRotate] = useState(true);
@@ -695,15 +699,27 @@ export default function Network3DGraph({
           <ZoomOut size={14} />
         </button>
         <button onClick={handleResetCamera} className="btn btn-ghost btn-sm" style={{ padding: 5, color: '#fff' }} title="Reset 3D Camera">
-          <Maximize2 size={14} />
+          <RotateCw size={14} />
         </button>
+
+        {onToggleFullscreen && (
+          <button
+            onClick={onToggleFullscreen}
+            className={`btn btn-sm ${isFullscreen ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ padding: '5px 9px', fontSize: '0.75rem', gap: 5, color: '#fff' }}
+            title={isFullscreen ? 'Exit Fullscreen' : 'Full Screen'}
+          >
+            {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            <span>{isFullscreen ? 'Exit' : 'Full'}</span>
+          </button>
+        )}
       </div>
 
       {/* Schema Filter Badges Bar */}
       <div style={{
         position: 'absolute',
         top: 14,
-        right: 16,
+        right: onToggleFullscreen ? 160 : 16,
         display: 'flex',
         alignItems: 'center',
         gap: 6,

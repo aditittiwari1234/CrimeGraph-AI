@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import cytoscape from 'cytoscape';
 import type { Core, NodeSingular } from 'cytoscape';
 import {
-  Search, ZoomIn, ZoomOut, Maximize2, RefreshCw, Filter,
+  Search, ZoomIn, ZoomOut, Maximize2, Minimize2, RefreshCw, Filter,
   Download, Info, X, ChevronRight, Loader, Network, GitBranch,
   FileText, Printer, ShieldAlert, CheckCircle2, ChevronDown, Box
 } from 'lucide-react';
@@ -305,6 +305,60 @@ export default function NetworkGraphPage() {
   const [graphPeople, setGraphPeople] = useState<GraphNode[]>([]);
   const [showDossierModal, setShowDossierModal] = useState(false);
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const graphContainerRef = useRef<HTMLDivElement>(null);
+
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen(prev => {
+      const next = !prev;
+      if (next) {
+        const elem = graphContainerRef.current;
+        if (elem && elem.requestFullscreen && !document.fullscreenElement) {
+          elem.requestFullscreen().catch(() => {});
+        }
+      } else {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isNativeFs = Boolean(document.fullscreenElement);
+      setIsFullscreen(isNativeFs);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreen]);
+
+  // When fullscreen changes, trigger cytoscape resize and fit
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (cyInstance.current) {
+        cyInstance.current.resize();
+        cyInstance.current.fit(undefined, 40);
+      }
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [isFullscreen]);
 
   const initCytoscape = useCallback(() => {
     if (!cyRef.current) return;
@@ -1114,6 +1168,25 @@ export default function NetworkGraphPage() {
               </div>
             )}
           </div>
+
+          {/* Fullscreen Toggle Button in Toolbar */}
+          <button
+            className={`btn btn-sm ${isFullscreen ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit Full Screen (Esc)' : 'Full Screen Graph View'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontWeight: 600,
+              background: isFullscreen ? 'linear-gradient(135deg, #2563eb, #7c3aed)' : undefined,
+              color: isFullscreen ? '#fff' : undefined,
+              borderColor: isFullscreen ? '#7c3aed' : undefined,
+            }}
+          >
+            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            <span>{isFullscreen ? 'Exit Fullscreen' : 'Full Screen'}</span>
+          </button>
         </div>
       </div>
 
@@ -1147,9 +1220,76 @@ export default function NetworkGraphPage() {
       )}
 
       {/* Main graph area */}
-      <div style={{ flex: 1, display: 'flex', gap: 12, minHeight: 0 }}>
+      <div
+        ref={graphContainerRef}
+        data-fullscreen={isFullscreen ? 'true' : 'false'}
+        style={{
+          flex: 1,
+          display: 'flex',
+          gap: isFullscreen ? 0 : 12,
+          minHeight: 0,
+          ...(isFullscreen ? {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 9999,
+            background: '#080c18',
+            padding: 0,
+            margin: 0,
+            border: 'none',
+            borderRadius: 0,
+            boxSizing: 'border-box',
+          } : {})
+        }}
+      >
         {/* Graph canvas container */}
-        <div className="graph-container" style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <div
+          className="graph-container"
+          style={{
+            flex: 1,
+            position: 'relative',
+            overflow: 'hidden',
+            ...(isFullscreen ? {
+              border: 'none',
+              borderRadius: 0,
+              boxShadow: 'none',
+              margin: 0,
+              padding: 0,
+            } : {})
+          }}
+        >
+          {/* Floating Fullscreen button on canvas */}
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Full Screen Graph View'}
+            style={{
+              position: 'absolute',
+              top: 14,
+              right: 14,
+              zIndex: 25,
+              background: isFullscreen ? 'linear-gradient(135deg, rgba(37,99,235,0.9), rgba(124,58,237,0.9))' : 'rgba(15, 23, 42, 0.85)',
+              backdropFilter: 'blur(10px)',
+              border: isFullscreen ? '1px solid #7c3aed' : '1px solid rgba(255, 255, 255, 0.16)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              borderRadius: 8,
+              boxShadow: '0 4px 18px rgba(0,0,0,0.5)',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            <span style={{ fontSize: '0.75rem' }}>{isFullscreen ? 'Exit Fullscreen' : 'Full Screen'}</span>
+          </button>
+
           {loading && (
             <div style={{
               position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
@@ -1180,6 +1320,8 @@ export default function NetworkGraphPage() {
                 selectedNodeId={selectedNode?.id}
                 onSelectNode={node => setSelectedNode(node as GraphNode | null)}
                 onSelectEdge={edge => setSelectedEdge(edge as GraphEdge | null)}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={toggleFullscreen}
               />
             </div>
           )}
@@ -1229,8 +1371,17 @@ export default function NetworkGraphPage() {
         {/* Right panel — entity details */}
         {(selectedNode || selectedEdge) && (
           <div className="slide-in-right" style={{
-            width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12,
+            width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12,
             overflowY: 'auto', maxHeight: '100%',
+            ...(isFullscreen ? {
+              background: 'rgba(15, 23, 42, 0.95)',
+              backdropFilter: 'blur(16px)',
+              borderLeft: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: 0,
+              margin: 0,
+              padding: 16,
+              zIndex: 30,
+            } : {})
           }}>
             {selectedNode && (
               <div className="card" style={{ flex: 'none' }}>
