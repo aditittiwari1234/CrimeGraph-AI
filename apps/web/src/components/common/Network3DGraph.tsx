@@ -706,11 +706,10 @@ export default function Network3DGraph({
           <button
             onClick={onToggleFullscreen}
             className={`btn btn-sm ${isFullscreen ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ padding: '5px 9px', fontSize: '0.75rem', gap: 5, color: '#fff' }}
-            title={isFullscreen ? 'Exit Fullscreen' : 'Full Screen'}
+            style={{ width: 28, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+            title={isFullscreen ? 'Exit Fullscreen (Esc / F11)' : 'Full Screen (F11)'}
           >
             {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-            <span>{isFullscreen ? 'Exit' : 'Full'}</span>
           </button>
         )}
       </div>
@@ -719,7 +718,7 @@ export default function Network3DGraph({
       <div style={{
         position: 'absolute',
         top: 14,
-        right: onToggleFullscreen ? 160 : 16,
+        right: onToggleFullscreen ? 58 : 16,
         display: 'flex',
         alignItems: 'center',
         gap: 6,

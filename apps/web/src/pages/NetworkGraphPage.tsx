@@ -314,11 +314,11 @@ export default function NetworkGraphPage() {
       if (next) {
         const elem = graphContainerRef.current;
         if (elem && elem.requestFullscreen && !document.fullscreenElement) {
-          elem.requestFullscreen().catch(() => {});
+          elem.requestFullscreen().catch(() => { });
         }
       } else {
         if (document.fullscreenElement && document.exitFullscreen) {
-          document.exitFullscreen().catch(() => {});
+          document.exitFullscreen().catch(() => { });
         }
       }
       return next;
@@ -332,10 +332,13 @@ export default function NetworkGraphPage() {
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreen) {
+      if (e.key === 'F11') {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.key === 'Escape' && isFullscreen) {
         setIsFullscreen(false);
         if (document.fullscreenElement && document.exitFullscreen) {
-          document.exitFullscreen().catch(() => {});
+          document.exitFullscreen().catch(() => { });
         }
       }
     };
@@ -1025,168 +1028,136 @@ export default function NetworkGraphPage() {
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <div className="search-input-wrapper" style={{ flex: 1 }}>
-            <Search size={14} className="search-icon" />
+          <div className="search-input-wrapper" style={{ flex: 1, position: 'relative' }}>
+            <Search
+              size={14}
+              className="search-icon"
+              style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+              onClick={handleSearch}
+              title="Click or press Enter to search"
+            />
             <input
-              type="text" className="form-input"
-              placeholder="Search entity to focus..."
+              type="text"
+              className="form-input"
+              placeholder="Search entity to focus (press Enter)..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
             />
           </div>
-          <button className="btn btn-primary btn-sm" onClick={handleSearch}>Search</button>
         </div>
 
-        {/* View Mode Switcher: 2D vs 3D */}
-        <div style={{
-          display: 'inline-flex',
-          background: 'rgba(15, 23, 42, 0.75)',
-          padding: 3,
-          borderRadius: 8,
-          border: '1px solid rgba(59, 130, 246, 0.3)',
-          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.3)'
-        }}>
-          <button
-            className={`btn btn-sm ${viewDimension === '2d' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setViewDimension('2d')}
-            style={{
-              borderRadius: 6,
-              padding: '4px 10px',
-              fontSize: '0.78rem',
-              gap: 6,
-              display: 'flex',
-              alignItems: 'center',
-              fontWeight: 600,
-            }}
-          >
-            <Network size={14} /> 2D Graph
-          </button>
-          <button
-            className={`btn btn-sm ${viewDimension === '3d' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setViewDimension('3d')}
-            style={{
-              borderRadius: 6,
-              padding: '4px 10px',
-              fontSize: '0.78rem',
-              gap: 6,
-              display: 'flex',
-              alignItems: 'center',
-              fontWeight: 600,
-              background: viewDimension === '3d' ? 'linear-gradient(135deg, #3b82f6, #8b5cf6)' : 'transparent',
-              color: viewDimension === '3d' ? '#ffffff' : 'var(--text-secondary)'
-            }}
-          >
-            <Box size={14} /> 3D Space
-          </button>
-        </div>
-
-        {/* 2D Layout Selector */}
-        {viewDimension === '2d' && (
-          <select
-            className="form-select form-select-sm"
-            value={layoutName}
-            onChange={e => applyLayout(e.target.value)}
-            style={{
-              fontSize: '0.75rem',
-              height: 32,
-              padding: '2px 8px',
-              minWidth: 140,
-              background: 'rgba(15, 23, 42, 0.65)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              color: 'var(--text-primary)'
-            }}
-            title="Change 2D Graph Layout"
-          >
-            <option value="cose">Layout: Force / Physics</option>
-            <option value="concentric">Layout: Concentric Rings</option>
-            <option value="circle">Layout: Circular Orbit</option>
-            <option value="breadthfirst">Layout: Hierarchy Tree</option>
-            <option value="grid">Layout: Matrix Grid</option>
-          </select>
-        )}
-
-        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-          {/* Path finder */}
-          {viewDimension === '2d' && (
-            <button
-              className={`btn btn-sm ${pathMode ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => { setPathMode(v => !v); setPathNodes([]); setPathResult(null); }}
-              title="Find shortest path between two nodes"
-            >
-              <GitBranch size={14} /> Path Finder
-            </button>
-          )}
-          <button className="btn btn-secondary btn-sm" onClick={resetGraph} title="Reset view">
-            <RefreshCw size={14} />
-          </button>
-          {viewDimension === '2d' && (
-            <>
-              <button className="btn btn-secondary btn-sm" onClick={() => cyInstance.current?.zoom({ level: cyInstance.current.zoom() * 1.2 })} title="Zoom in">
-                <ZoomIn size={14} />
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => cyInstance.current?.zoom({ level: cyInstance.current.zoom() * 0.8 })} title="Zoom out">
-                <ZoomOut size={14} />
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => cyInstance.current?.fit(undefined, 40)} title="Fit all">
-                <Maximize2 size={14} />
-              </button>
-            </>
-          )}
-          <div style={{ position: 'relative' }}>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setExportDropdownOpen(v => !v)}
-              title="Export options"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg, #1e40af, #3b82f6)' }}
-            >
-              <Download size={14} /> Export <ChevronDown size={12} />
-            </button>
-            {exportDropdownOpen && (
-              <div
-                style={{
-                  position: 'absolute', right: 0, top: '100%', marginTop: 6, zIndex: 1000,
-                  background: 'var(--surface-1, #111827)', border: '1px solid var(--border-primary, #374151)',
-                  borderRadius: 8, padding: 6, minWidth: 220, boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
-                  display: 'flex', flexDirection: 'column', gap: 4,
-                }}
-              >
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => { setExportDropdownOpen(false); exportGraph(); }}
-                  style={{ justifyContent: 'flex-start', gap: 8, width: '100%', textAlign: 'left' }}
+        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Integrated Inline Switch & Layout Bar with locked fixed height */}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            height: 36,
+            minHeight: 36,
+            maxHeight: 36,
+            boxSizing: 'border-box',
+            background: 'var(--bg-elevated, #f1f5f9)',
+            padding: '3px 4px',
+            borderRadius: 'var(--radius-md, 8px)',
+            border: '1px solid var(--border-primary, #cbd5e1)',
+            boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04))',
+            flexShrink: 0,
+            whiteSpace: 'nowrap',
+          }}>
+            {/* 2D Layout Selector to the LEFT of the 2D graph button */}
+            {viewDimension === '2d' && (
+              <>
+                <select
+                  value={layoutName}
+                  onChange={e => applyLayout(e.target.value)}
+                  style={{
+                    fontSize: '0.78rem',
+                    height: 28,
+                    minHeight: 28,
+                    maxHeight: 28,
+                    lineHeight: '26px',
+                    boxSizing: 'border-box',
+                    padding: '0 8px',
+                    minWidth: 150,
+                    background: '#ffffff',
+                    border: '1px solid var(--border-primary, #cbd5e1)',
+                    color: 'var(--text-primary, #0f172a)',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                    outline: 'none',
+                    margin: 0,
+                  }}
+                  title="Change 2D Graph Layout"
                 >
-                  <Download size={14} /> Download Graph (PNG)
-                </button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={() => { setExportDropdownOpen(false); setShowDossierModal(true); }}
-                  style={{ justifyContent: 'flex-start', gap: 8, width: '100%', textAlign: 'left', background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                >
-                  <FileText size={14} /> Generate NCRB Dossier
-                </button>
-              </div>
+                  <option value="cose">Layout: Force / Physics</option>
+                  <option value="concentric">Layout: Concentric Rings</option>
+                  <option value="circle">Layout: Circular Orbit</option>
+                  <option value="breadthfirst">Layout: Hierarchy Tree</option>
+                  <option value="grid">Layout: Matrix Grid</option>
+                </select>
+                <div style={{ width: 1, height: 18, background: 'var(--border-primary, #cbd5e1)', margin: '0 2px', flexShrink: 0 }} />
+              </>
             )}
-          </div>
 
-          {/* Fullscreen Toggle Button in Toolbar */}
-          <button
-            className={`btn btn-sm ${isFullscreen ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={toggleFullscreen}
-            title={isFullscreen ? 'Exit Full Screen (Esc)' : 'Full Screen Graph View'}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontWeight: 600,
-              background: isFullscreen ? 'linear-gradient(135deg, #2563eb, #7c3aed)' : undefined,
-              color: isFullscreen ? '#fff' : undefined,
-              borderColor: isFullscreen ? '#7c3aed' : undefined,
-            }}
-          >
-            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-            <span>{isFullscreen ? 'Exit Fullscreen' : 'Full Screen'}</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setViewDimension('2d')}
+              style={{
+                height: 28,
+                minHeight: 28,
+                maxHeight: 28,
+                boxSizing: 'border-box',
+                borderRadius: 6,
+                padding: '0 10px',
+                fontSize: '0.78rem',
+                gap: 6,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: viewDimension === '2d' ? 600 : 500,
+                whiteSpace: 'nowrap',
+                border: 'none',
+                background: viewDimension === '2d' ? '#ffffff' : 'transparent',
+                color: viewDimension === '2d' ? 'var(--accent-primary, #2563eb)' : 'var(--text-tertiary, #475569)',
+                boxShadow: viewDimension === '2d' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                margin: 0,
+              }}
+            >
+              <Network size={14} /> 2D Graph
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewDimension('3d')}
+              style={{
+                height: 28,
+                minHeight: 28,
+                maxHeight: 28,
+                boxSizing: 'border-box',
+                borderRadius: 6,
+                padding: '0 10px',
+                fontSize: '0.78rem',
+                gap: 6,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: viewDimension === '3d' ? 600 : 500,
+                whiteSpace: 'nowrap',
+                border: 'none',
+                background: viewDimension === '3d' ? 'linear-gradient(135deg, #2563eb, #7c3aed)' : 'transparent',
+                color: viewDimension === '3d' ? '#ffffff' : 'var(--text-tertiary, #475569)',
+                boxShadow: viewDimension === '3d' ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                margin: 0,
+              }}
+            >
+              <Box size={14} /> 3D Space
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1262,33 +1233,83 @@ export default function NetworkGraphPage() {
             } : {})
           }}
         >
-          {/* Floating Fullscreen button on canvas */}
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={toggleFullscreen}
-            title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Full Screen Graph View'}
-            style={{
-              position: 'absolute',
-              top: 14,
-              right: 14,
-              zIndex: 25,
-              background: isFullscreen ? 'linear-gradient(135deg, rgba(37,99,235,0.9), rgba(124,58,237,0.9))' : 'rgba(15, 23, 42, 0.85)',
-              backdropFilter: 'blur(10px)',
-              border: isFullscreen ? '1px solid #7c3aed' : '1px solid rgba(255, 255, 255, 0.16)',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              borderRadius: 8,
-              boxShadow: '0 4px 18px rgba(0,0,0,0.5)',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-            <span style={{ fontSize: '0.75rem' }}>{isFullscreen ? 'Exit Fullscreen' : 'Full Screen'}</span>
-          </button>
+          {/* Top-Right Floating Canvas Controls */}
+          {(viewDimension === '2d' || isFullscreen) && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 14,
+                right: 14,
+                zIndex: 25,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              {/* When in Fullscreen: button to switch 2D / 3D */}
+              {isFullscreen && (
+                <button
+                  type="button"
+                  onClick={() => setViewDimension(viewDimension === '2d' ? '3d' : '2d')}
+                  title={viewDimension === '2d' ? 'Switch to 3D Space' : 'Switch to 2D Graph'}
+                  style={{
+                    height: 34,
+                    padding: '0 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: '#ffffff',
+                    color: 'var(--text-primary, #0f172a)',
+                    border: '1px solid var(--border-primary, #cbd5e1)',
+                    borderRadius: 8,
+                    boxShadow: '0 2px 10px rgba(0, 0, 0, 0.15)',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {viewDimension === '2d' ? (
+                    <>
+                      <Box size={14} color="#2563eb" />
+                      <span>Switch to 3D</span>
+                    </>
+                  ) : (
+                    <>
+                      <Network size={14} color="#2563eb" />
+                      <span>Switch to 2D</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Fullscreen Toggle Button */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? 'Exit Fullscreen (Esc / F11)' : 'Full Screen (F11)'}
+                style={{
+                  width: 34,
+                  height: 34,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#ffffff',
+                  color: 'var(--text-primary, #0f172a)',
+                  border: '1px solid var(--border-primary, #cbd5e1)',
+                  borderRadius: 8,
+                  boxShadow: '0 2px 10px rgba(0, 0, 0, 0.15)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+            </div>
+          )}
 
           {loading && (
             <div style={{
@@ -1321,7 +1342,6 @@ export default function NetworkGraphPage() {
                 onSelectNode={node => setSelectedNode(node as GraphNode | null)}
                 onSelectEdge={edge => setSelectedEdge(edge as GraphEdge | null)}
                 isFullscreen={isFullscreen}
-                onToggleFullscreen={toggleFullscreen}
               />
             </div>
           )}
@@ -1343,6 +1363,77 @@ export default function NetworkGraphPage() {
               <div className="ai-disclaimer" style={{ padding: '5px 12px', fontSize: '0.72rem' }}>
                 Analytical relationships — not proof of wrongdoing
               </div>
+            </div>
+          )}
+
+          {/* 2D Floating Zoom & Reset Controls at Right Bottom */}
+          {viewDimension === '2d' && (
+            <div style={{
+              position: 'absolute',
+              bottom: 14,
+              right: 14,
+              zIndex: 25,
+              display: 'flex',
+              flexDirection: 'column',
+              background: '#ffffff',
+              borderRadius: 8,
+              border: '1px solid var(--border-primary, #cbd5e1)',
+              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.12)',
+              overflow: 'hidden',
+            }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => cyInstance.current?.zoom({ level: cyInstance.current.zoom() * 1.25 })}
+                title="Zoom In"
+                style={{
+                  padding: '7px 9px',
+                  borderRadius: 0,
+                  borderBottom: '1px solid var(--border-primary, #e2e8f0)',
+                  color: 'var(--text-primary, #0f172a)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <ZoomIn size={15} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => cyInstance.current?.zoom({ level: cyInstance.current.zoom() * 0.8 })}
+                title="Zoom Out"
+                style={{
+                  padding: '7px 9px',
+                  borderRadius: 0,
+                  borderBottom: '1px solid var(--border-primary, #e2e8f0)',
+                  color: 'var(--text-primary, #0f172a)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <ZoomOut size={15} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={resetGraph}
+                title="Reset View"
+                style={{
+                  padding: '7px 9px',
+                  borderRadius: 0,
+                  color: 'var(--text-primary, #0f172a)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <RefreshCw size={14} />
+              </button>
             </div>
           )}
 
@@ -1553,7 +1644,7 @@ export default function NetworkGraphPage() {
 
             {/* Printable Dossier Content */}
             <div style={{ padding: '24px 28px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
-              
+
               {/* Header */}
               <div style={{ textAlign: 'center', borderBottom: '2px solid #1e3a8a', paddingBottom: 16 }}>
                 <div style={{ fontSize: '0.75rem', letterSpacing: '0.15em', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4 }}>
