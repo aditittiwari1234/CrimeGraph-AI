@@ -350,16 +350,18 @@ export default function EntitiesPage() {
       });
     }
 
-    items.push({
-      label: 'Copy Entity ID',
-      sublabel: entity.id,
-      icon: Copy,
-      onClick: () => {
-        navigator.clipboard.writeText(entity.id);
-        showToast(`Copied ID (${entity.id}) to clipboard!`);
-      },
-      dividerAfter: true,
-    });
+    if (colKey !== 'id') {
+      items.push({
+        label: 'Copy Entity ID',
+        sublabel: entity.id,
+        icon: Copy,
+        onClick: () => {
+          navigator.clipboard.writeText(entity.id);
+          showToast(`Copied ID (${entity.id}) to clipboard!`);
+        },
+        dividerAfter: true,
+      });
+    }
 
     if (colValue !== undefined && colValue !== null && String(colValue).trim() !== '') {
       items.push({
